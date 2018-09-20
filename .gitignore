@@ -1,6 +1,13 @@
+*.pdf
+*.pptx
+*.xlsx
 .DS_Store
 Presentations
 */data/
 */output/
 datasets
 */old/
+robust_logisticregression/results*
+robust_logisticregression/*.pdf
+*.xlsx
+Manuscript
