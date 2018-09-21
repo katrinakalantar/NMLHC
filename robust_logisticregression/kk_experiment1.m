@@ -29,7 +29,7 @@ options.maxIter = 100;
 %EXP_RANGE       = [0, .01, .025, .05, .1, .15, .2, .3, .4, .5]; %y-axis of heatmap
 %EXP_RANGE_J     = [0, .01, .025, .05, .1, .15, .2, .3, .4, .5];  % x-axis of heatmap
 EXP_RANGE       = [0, .05, .1, .15, .2, .25, .3];%, .05, .1, .15, .2, .3, .4, .5]; %y-axis of heatmap.025, 
-EXP_RANGE_J     = [0, .05, .1, .15, .2, .25, .3];%, .05, .1, .15, .2, .3, .4, .5];  % x-axis of heatmap
+EXP_RANGE_J     = [0];%, .05, .1, .15, .2, .25, .3];%, .05, .1, .15, .2, .3, .4, .5];  % x-axis of heatmap
 
 CLS             = 2;    % number of classes
 DIM             = 1000; % dimensionality of dataset generated
@@ -148,9 +148,9 @@ for i = 1:length(EXP_RANGE)
             
             % train a gold standard decision boundary for noise generation
             % using LR
-            options.estG    = false;
-            options.regFunc = 'lasso';
-            options.verbose = false;
+            %options.estG    = false;
+            %options.regFunc = 'lasso';
+            %options.verbose = false;
             %[ww, ~, ~]      = rlr(winit,eye(CLS),addbias(Xt),yt,options);
             
             [yz, fdz] = injectLabelNoise(yt, [flip_i flip_j]);
@@ -220,17 +220,15 @@ for i = 1:length(EXP_RANGE)
                 % run PCA on original dataset
                 [COEFF, SCORE, explained_var] = pca(Xt);
                 % select # of PCs to use in analysis
-                n_pcs = sum((cumsum(explained_var)/sum(explained_var) < .9)); % use all PCs required to eplain 70% of variance                
-                % project test dataset into PCA space
-                W = diag(std(Xs))\COEFF;
+                n_pcs = sum((cumsum(explained_var)/sum(explained_var) < .9)); % use all PCs required to eplain 90% of variance                
+                W = diag(std(Xs))\COEFF;  % project test dataset into PCA space
                 [~, mu, we] = zscore(double(Xs));  % Getting mean and weights of data (for future data)
                 we(we==0) = 1;
                 xfs = double(Xs);  % New points in original feature space
                 xfs = bsxfun(@minus, xfs, mu);
                 xfs = bsxfun(@rdivide, xfs, we);
                 projected_data = xfs*W; % New coordinates as principal components
-                % set the data to PC representation for both training and
-                % test sets
+                % set the data to PCs for both training and test sets
                 Xt = SCORE(:,1:n_pcs);
                 Xs = projected_data(:,1:n_pcs);
             end
@@ -259,25 +257,6 @@ for i = 1:length(EXP_RANGE)
             es_rlr(i,j,k) = sum(sign(addbias(Xs)*wr) ~= castLabel(ys,-1))/length(ys);
             [~,~,~,AUC] = perfcurve(ys,addbias(Xs)*wr,2);
             es_rlr_auc(i,j,k) = AUC;
-            
-%             % rLR without estimating G, but with better estimation of G up
-%             % front
-%             options.estG = false;
-%             options.regFunc = 'lasso';
-%             options.verbose = false;
-%             [wr2, gr2, l_rlr2] = rlr(winit,[1-flip_i flip_i;flip_j 1-flip_j], addbias(Xt), yz, options);
-%             es_rlr2(i,j,k) = sum(sign(addbias(Xs)*wr2) ~= castLabel(ys,-1))/length(ys);
-%             [~,~,~,AUC] = perfcurve(ys,addbias(Xs)*wr2,2);
-%             es_rlr_auc2(i,j,k) = AUC;
-%             
-%             % rLR with estimating G AND better estimation of G up front
-%             options.estG = true;
-%             options.regFunc = 'lasso';
-%             options.verbose = false;
-%             [wr3, gr3, l_rlr3] = rlr(winit,[1-flip_i flip_i;flip_j 1-flip_j], addbias(Xt), yz, options);
-%             es_rlr3(i,j,k) = sum(sign(addbias(Xs)*wr3) ~= castLabel(ys,-1))/length(ys);
-%             [~,~,~,AUC] = perfcurve(ys,addbias(Xs)*wr3,2);
-%             es_rlr_auc3(i,j,k) = AUC;
            
             % nLR
             options.estG = true;
@@ -304,7 +283,6 @@ fig_pos = fig.PaperPosition;
 fig.PaperSize = [fig_pos(3) fig_pos(4)];
 print('figure6','-bestfit','-dpdf')
 
-
 plot_heatmap(es_lr, 'MEAN ES\_LR', 'figure1', 0, .55, EXP_RANGE_J, EXP_RANGE)
 plot_heatmap(es_rlr, 'MEAN ES\_RLR', 'figure2', 0, .55, EXP_RANGE_J, EXP_RANGE)
 %plot_heatmap(es_rlr2, 'MEAN ES\_RLR_noGest', 'figure2b', 0, .55, EXP_RANGE_J, EXP_RANGE)
@@ -317,173 +295,12 @@ plot_heatmap(es_rlr_auc, 'MEAN ES\_RLR AUC', 'figure2_auc', 0, 1, EXP_RANGE_J, E
 %plot_heatmap(es_rlr_auc3, 'MEAN ES\_RLR\_Gest AUC', 'figure2c_auc', 0, 1, EXP_RANGE_J, EXP_RANGE)
 plot_heatmap(es_gammalr_auc, 'MEAN ES\_GAMMALR AUC', 'figure3_auc', 0, 1, EXP_RANGE_J, EXP_RANGE)
 
+plot_lineplot(es_lr, es_rlr, es_gammalr ,EXP_RANGE_J, EXP_RANGE, 'Figure4')
+plot_lineplot(100 - es_lr, 100 - es_rlr, 100 - es_gammalr ,EXP_RANGE_J, EXP_RANGE, 'Figure5')
+plot_lineplot(es_lr_auc, es_rlr_auc, es_gammalr_auc ,EXP_RANGE_J, EXP_RANGE, 'Figure5_auc')
 
 
 
-%[COEFF,SCORE] = pca(Xt)
-
-
-x = EXP_RANGE_J;
-x2 = EXP_RANGE;
-
-y = mean(es_lr,3).*100;
-err = std(es_lr,0,3).*100;
-% mean/error along x-axis of heatmap // % Flipped in J, one to zero
-plot(x,y(1,:), 'LineWidth', 2,'color',[89 47 188]./255);  hold on;
-e = errorbar(x,y(1,:),err(1,:),'-k.');
-e.Color = [89 47 188]./255; %purple
-hold on;
-% mean/error along y-axis of heatmap // % Flipped in I, zero to one
-plot(x2,y(:,1), 'LineWidth', 2,'color', [165 127 255]./255);  hold on;
-e = errorbar(x2,y(:,1),err(:,1));
-e.Color = [165 127 255]./255; %light purple
-hold on;
-
-y = mean(es_rlr,3).*100;
-% mean/error along x-axis of heatmap // % Flipped in J, one to zero
-err = std(es_rlr,0,3).*100;
-plot(x,y(1,:), 'LineWidth', 2,'color',[40 155 71]./255);  hold on;
-e2 = errorbar(x,y(1,:),err(1,:));
-e2.Color = [40 155 71]./255; %dark green
-% mean/error along y-axis of heatmap // % Flipped in I, zero to one
-err = std(es_rlr,0,3).*100;
-plot(x2,y(:,1), 'LineWidth', 2,'color', [53 214 96]./255);  hold on;
-e2 = errorbar(x2,y(:,1),err(:,1));
-e2.Color = [53 214 96]./255; %light green
-hold on;
-
-y = mean(es_gammalr,3).*100;
-% mean/error along x-axis of heatmap // % Flipped in J, one to zero
-err = std(es_gammalr,0,3).*100;
-plot(x,y(1,:), 'LineWidth', 2,'color',[47 170 188]./255);  hold on;
-e3 = errorbar(x,y(1,:),err(1,:));
-e3.Color = [47 170 188]./255; % dark blue
-% mean/error along y-axis of heatmap // % Flipped in I, zero to one
-err = std(es_gammalr,0,3).*100;
-plot(x2,y(:,1), 'LineWidth', 2,'color', [60 218 242]./255);  hold on;
-e3 = errorbar(x2,y(:,1),err(:,1));
-e3.Color = [60 218 242]./255; % light blue
-hold on;
-
-xlabel("% Flipped")
-ylabel("Error")
-ylim([0 100])
-fig = gcf;
-fig.PaperPositionMode = 'auto';
-fig_pos = fig.PaperPosition;
-fig.PaperSize = [fig_pos(3) fig_pos(4)];
-print('figure4','-bestfit','-dpdf')
-
-hold off;
-
-
-x = EXP_RANGE_J;
-x2 = EXP_RANGE;
-
-y = 100 - mean(es_lr,3).*100;
-err = std(es_lr,0,3).*100;
-% mean/error along x-axis of heatmap // % Flipped in J, one to zero
-plot(x,y(1,:), 'LineWidth', 2,'color',[89 47 188]./255);  hold on;
-e = errorbar(x,y(1,:),err(1,:),'-k.');
-e.Color = [89 47 188]./255; %purple
-hold on;
-% mean/error along y-axis of heatmap // % Flipped in I, zero to one
-plot(x2,y(:,1), 'LineWidth', 2,'color', [165 127 255]./255);  hold on;
-e = errorbar(x2,y(:,1),err(:,1));
-e.Color = [165 127 255]./255; %light purple
-hold on;
-
-y = 100 - mean(es_rlr,3).*100;
-% mean/error along x-axis of heatmap // % Flipped in J, one to zero
-err = std(es_rlr,0,3).*100;
-plot(x,y(1,:), 'LineWidth', 2,'color',[40 155 71]./255);  hold on;
-e2 = errorbar(x,y(1,:),err(1,:));
-e2.Color = [40 155 71]./255; %dark green
-% mean/error along y-axis of heatmap // % Flipped in I, zero to one
-err = std(es_rlr,0,3).*100;
-plot(x2,y(:,1), 'LineWidth', 2,'color', [53 214 96]./255);  hold on;
-e2 = errorbar(x2,y(:,1),err(:,1));
-e2.Color = [53 214 96]./255; %light green
-hold on;
-
-y = 100 - mean(es_gammalr,3).*100;
-% mean/error along x-axis of heatmap // % Flipped in J, one to zero
-err = std(es_gammalr,0,3).*100;
-plot(x,y(1,:), 'LineWidth', 2,'color',[47 170 188]./255);  hold on;
-e3 = errorbar(x,y(1,:),err(1,:));
-e3.Color = [47 170 188]./255; % dark blue
-% mean/error along y-axis of heatmap // % Flipped in I, zero to one
-err = std(es_gammalr,0,3).*100;
-plot(x2,y(:,1), 'LineWidth', 2,'color', [60 218 242]./255);  hold on;
-e3 = errorbar(x2,y(:,1),err(:,1));
-e3.Color = [60 218 242]./255; % light blue
-hold on;
-
-
-xlabel("% Flipped")
-ylabel("Accuracy (%)")
-ylim([0 100])
-fig = gcf;
-fig.PaperPositionMode = 'auto';
-fig_pos = fig.PaperPosition;
-fig.PaperSize = [fig_pos(3) fig_pos(4)];
-print('figure5','-bestfit','-dpdf')
-hold off;
-
-
-
-x = EXP_RANGE_J;
-x2 = EXP_RANGE;
-
-y = mean(es_lr_auc,3);
-err = std(es_lr_auc,0,3);
-% mean/error along x-axis of heatmap // % Flipped in J, one to zero
-plot(x,y(1,:), 'LineWidth', 2,'color',[89 47 188]./255);  hold on;
-e = errorbar(x,y(1,:),err(1,:),'-k.');
-e.Color = [89 47 188]./255; %purple
-hold on;
-% mean/error along y-axis of heatmap // % Flipped in I, zero to one
-plot(x2,y(:,1), 'LineWidth', 2,'color', [165 127 255]./255);  hold on;
-e = errorbar(x2,y(:,1),err(:,1));
-e.Color = [165 127 255]./255; %light purple
-hold on;
-
-y = mean(es_rlr_auc,3);
-% mean/error along x-axis of heatmap // % Flipped in J, one to zero
-err = std(es_rlr_auc,0,3);
-plot(x,y(1,:), 'LineWidth', 2,'color',[40 155 71]./255);  hold on;
-e2 = errorbar(x,y(1,:),err(1,:));
-e2.Color = [40 155 71]./255; %dark green
-% mean/error along y-axis of heatmap // % Flipped in I, zero to one
-err = std(es_rlr_auc,0,3);
-plot(x2,y(:,1), 'LineWidth', 2,'color', [53 214 96]./255);  hold on;
-e2 = errorbar(x2,y(:,1),err(:,1));
-e2.Color = [53 214 96]./255; %light green
-hold on;
-
-y = mean(es_gammalr_auc,3);
-% mean/error along x-axis of heatmap // % Flipped in J, one to zero
-err = std(es_gammalr_auc,0,3);
-plot(x,y(1,:), 'LineWidth', 2,'color',[47 170 188]./255);  hold on;
-e3 = errorbar(x,y(1,:),err(1,:));
-e3.Color = [47 170 188]./255; % dark blue
-% mean/error along y-axis of heatmap // % Flipped in I, zero to one
-err = std(es_gammalr_auc,0,3);
-plot(x2,y(:,1), 'LineWidth', 2,'color', [60 218 242]./255);  hold on;
-e3 = errorbar(x2,y(:,1),err(:,1));
-e3.Color = [60 218 242]./255; % light blue
-hold on;
-
-
-xlabel("% Flipped")
-ylabel("AUC")
-ylim([0 1])
-fig = gcf;
-fig.PaperPositionMode = 'auto';
-fig_pos = fig.PaperPosition;
-fig.PaperSize = [fig_pos(3) fig_pos(4)];
-print('figure5_auc','-bestfit','-dpdf')
-hold off;
 
 
 
@@ -545,21 +362,6 @@ scatter(y(:,1), y(:,2), 'red');
 
 
 
-
-
-%TESTING
-
-% create random matrix
-a = 0; b = 1:10;
-B = repmat(b,5,1);
-R = unifrnd(a,B); % 5 samples (rows), 10 features (cols).
-
-R2 = bootstrap2(R', 4);  % it does look like each sampled value comes from the appropriate column (features)
-
-size(Xt) %130 samples (rows), 3000 features (cols)
-bootsam_1 = bootstrap2(double( Xt(yt==1,:)'), 100);  % 
-bootsam_2 = bootstrap2(double( Xt(yt==2,:)'), 100);
-            
 
 
 (es_rlr_auc - es_lr_auc) > 0
