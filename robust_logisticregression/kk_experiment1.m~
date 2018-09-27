@@ -39,14 +39,14 @@ DS_SIZE         = 50;  % dataset size
 es_lr      = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
 es_lr_nonoise      = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
 es_rlr     = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
-es_rlr2    = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
+% es_rlr2    = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
 % es_rlr3    = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
 es_gammalr = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
 
 % preallocating AUC storage
 es_lr_auc       = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
 es_rlr_auc      = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
-es_rlr_auc2     = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
+% es_rlr_auc2     = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
 % es_rlr_auc3     = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
 es_gammalr_auc  = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
 es_lr_nonoise_auc = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
@@ -154,7 +154,6 @@ for i = 1:length(EXP_RANGE)
             es_lr_nonoise_auc(i,j,k) = AUC;
 
             size(Xt)
-            sum(abs(w_nonoise) < 1e-6)/length(w_nonoise)
 
             
             % basic feature selection including all mislabelled samples
@@ -195,7 +194,6 @@ for i = 1:length(EXP_RANGE)
             %winit = randn(DIM+1,1);
             winit = randn(size(Xt,2) + 1, 1);
             
-           
             
             % rLR
             options.estG = false;
@@ -207,7 +205,7 @@ for i = 1:length(EXP_RANGE)
             [~,~,~,AUC] = perfcurve(ys,addbias(Xs)*w,2);
             es_lr_auc(i,j,k) = AUC;
             
-            sum(abs(w) < 1e-6)/length(w)
+            sum(abs(w)>0)/length(w)
             
 %             % rLR
 %             options.estG = true;
@@ -229,24 +227,14 @@ for i = 1:length(EXP_RANGE)
             [wr, gr, l_rlr] = rlr(winit,[1-rr rr;rr 1-rr],addbias(Xt),yz,options);
             es_rlr(i,j,k) = sum(sign(addbias(Xs)*wr) ~= castLabel(ys,-1))/length(ys);
             [~,~,~,AUC] = perfcurve(ys,addbias(Xs)*wr,2);
-            es_rlr_auc(i,j,k) = AUC;
            
-            sum(abs(wr) < 1e-6)/length(wr)
+            sum(abs(wr)>0)/length(wr)
             
-            %rLR iteration 2 after filtering genes
+            
             keep = abs(wr) > 1e-6;
-            keep = keep(1:length(keep)-1);
-            options.estG = true;
-            options.regFunc = common_reg;
-            options.sn = common_sn;
-            options.verbose = false;
-            winit2 = randn(sum(keep) + 1, 1);
-            rr = .2;
-            [wr2, gr2, l_rlr2] = rlr(winit2,[1-rr rr;rr 1-rr],addbias(Xt(:,keep)),yz,options);
-            es_rlr2(i,j,k) = sum(sign(addbias(Xs(:,keep))*wr2) ~= castLabel(ys,-1))/length(ys);
-            [~,~,~,AUC] = perfcurve(ys,addbias(Xs(:,keep))*wr2,2);
-            es_rlr_auc2(i,j,k) = AUC;
-            sum(abs(wr2) < 1e-6)/length(wr2)
+            
+            
+            
             
             % nLR
             options.estG = true;
@@ -258,11 +246,11 @@ for i = 1:length(EXP_RANGE)
             [~,~,~,AUC] = perfcurve(ys,addbias(Xs)*wg,2);
             es_gammalr_auc(i,j,k) = AUC;
             
-            sum(abs(wg) < 1e-6)/length(wg)
+            sum(abs(wg)>0)/length(wg)
             
             %fprintf('AUC lr=%f rlr1=%f rlr2=%f gammalr=%f\n',es_lr_auc(i,j,k),es_rlr_auc(i,j,k),es_rlr_auc2(i,j,k),es_gammalr_auc(i,j,k));
-            fprintf('AUC lr=%f rlr1=%f rlr2=%f gammalr=%f\n',es_lr_auc(i,j,k),es_rlr_auc(i,j,k),es_rlr_auc2(i,j,k),es_gammalr_auc(i,j,k));
-            fprintf('ERR lr=%f rlr1=%f rlr2=%f gammalr=%f\n',es_lr(i,j,k),es_rlr(i,j,k),es_rlr2(i,j,k),es_gammalr(i,j,k));
+            fprintf('AUC lr=%f rlr1=%f gammalr=%f\n',es_lr_auc(i,j,k),es_rlr_auc(i,j,k),es_gammalr_auc(i,j,k));
+            fprintf('ERR lr=%f rlr1=%f gammalr=%f\n',es_lr(i,j,k),es_rlr(i,j,k),es_gammalr(i,j,k));
             
             
         end
@@ -279,13 +267,13 @@ print('figure6','-bestfit','-dpdf')
 
 plot_heatmap(es_lr, 'MEAN ES\_LR', 'figure1', 0, .55, EXP_RANGE_J, EXP_RANGE)
 plot_heatmap(es_rlr, 'MEAN ES\_RLR', 'figure2', 0, .55, EXP_RANGE_J, EXP_RANGE)
-plot_heatmap(es_rlr2, 'MEAN ES\_RLR_noGest', 'figure2b', 0, .55, EXP_RANGE_J, EXP_RANGE)
+%plot_heatmap(es_rlr2, 'MEAN ES\_RLR_noGest', 'figure2b', 0, .55, EXP_RANGE_J, EXP_RANGE)
 %plot_heatmap(es_rlr3, 'MEAN ES\_RLR\_Gest', 'figure2c', 0, .55, EXP_RANGE_J, EXP_RANGE)
 plot_heatmap(es_gammalr, 'MEAN ES\_GAMMALR', 'figure3', 0, .55, EXP_RANGE_J, EXP_RANGE)
 
 plot_heatmap(es_lr_auc, 'MEAN ES\_LR AUC', 'figure1_auc', 0, 1, EXP_RANGE_J, EXP_RANGE)
 plot_heatmap(es_rlr_auc, 'MEAN ES\_RLR AUC', 'figure2_auc', 0, 1, EXP_RANGE_J, EXP_RANGE)
-plot_heatmap(es_rlr_auc2, 'MEAN ES\_RLR\_noGest AUC', 'figure2b_auc', 0, 1, EXP_RANGE_J, EXP_RANGE)
+%plot_heatmap(es_rlr_auc2, 'MEAN ES\_RLR\_noGest AUC', 'figure2b_auc', 0, 1, EXP_RANGE_J, EXP_RANGE)
 %plot_heatmap(es_rlr_auc3, 'MEAN ES\_RLR\_Gest AUC', 'figure2c_auc', 0, 1, EXP_RANGE_J, EXP_RANGE)
 plot_heatmap(es_gammalr_auc, 'MEAN ES\_GAMMALR AUC', 'figure3_auc', 0, 1, EXP_RANGE_J, EXP_RANGE)
 

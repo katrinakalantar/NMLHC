@@ -132,7 +132,7 @@ for(i in seq(1:max_iter)){
   E_theta[[i]] = E_u[[i]] + E_z[[i]]
   prob_list[[i]] = P_u[[i]] * P_z[[i]] * prod(as.numeric((sigma[[i]] * zmat[[i]][,2][Ytf]) + (1-sigma[[i]] * zmat[[i]][,1][Ytf])))
   
-  # verify increase in likelihoods per iteration; check if time to break loop
+  # verify increase in likelihoods per iteration; also, check if time to break loop
   if(i > 1){
     print(paste("E_u increases each interation:", (E_u[[i]] > E_u[[i-1]]))) # E_u should increase after "u <- u_new"
     print(paste("E_z increases each interation:", (E_z[[i]] > E_z[[i-1]]))) # E_z should increase after "zmat <- zmat_new"
@@ -161,6 +161,7 @@ for(i in seq(1:max_iter)){
   
 }
 
+# plots should show increasing E_u and E_z per iteration - THIS IS NOT THE CASE!! SOMETHING IS GOING WRONG
 par(mfrow=c(1,2))
 plot(unlist(E_u), main = "E_u")
 plot(unlist(E_z), main = "E_z")

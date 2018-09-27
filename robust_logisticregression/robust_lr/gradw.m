@@ -18,14 +18,22 @@ s1(s1==0) = eps;
 % set the distribution of data 
 D     = options.dist;   
 fv    = -sum((D .* y .* log(s1)) + (D .* (1 - y).* log(s0)),1) + sum(lambda .* regV);
+
 % compute corresponding derivative
 tmp1  = (gamma(2,2) - gamma(1,2)) * (D .* y ./ s1);
 tmp2  = (gamma(2,1) - gamma(1,1)) * (D .* (1 - y) ./ s0);
 
        
 gAux1 = (tmp1 + tmp2) ./ (1+exp(-t)) .* (1 ./ ((1 ./ exp(-t))+1));
+size(gAux1)
 
 % completed Eq.34 with dot product with x_n
 gAux2 = repmat(gAux1, 1, size(x,2)) .* x;
+"size gAux2"
+size(gAux2)
+"size -sum(gAux2,1)"
+size(-sum(gAux2,1))
+"size -sum(gAux2,1)'"
+size(-sum(gAux2,1)')
 dfv   = -sum(gAux2,1)' + (lambda .* regDV);
 

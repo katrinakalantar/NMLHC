@@ -31,7 +31,6 @@
 
 function [w g llh] = rlr(w, g, x, y, options)
 
-
 % The function uses {0,1} class representation.
 y = castLabel(y,0);
 
@@ -80,6 +79,7 @@ llh = zeros(1,options.maxIter);
 
 %% ========================= BEGIN ESTIMATING PARAMETERS ===========================
 for l=1:options.maxIter
+
     
     %% computing the regularisation term
     switch options.regFunc
@@ -178,17 +178,27 @@ for l=1:options.maxIter
     end
     
     t  = x * w;
+    size(t)
     
     s0    = (g(1,1) * (1 ./ ((1 ./ exp(-t))+1))) + (g(2,1) ./ (1+exp(-t)));
     s1    = (g(1,2) * (1 ./ ((1 ./ exp(-t))+1))) + (g(2,2) ./ (1+exp(-t)));
+    
+    
     
     s0(s0==0) = eps;
     s1(s1==0) = eps;
     
     [regV void] = feval(options.regFunc, w, options.sn);
     
+    "s1"
+    size(s1)
+    "y"
+    size(y)
+    
     llh(l) = -sum((y .* log(s1)) + ((1 - y).* log(s0)),1) + sum(lambda .* regV);
             
+    "llh"
+    llh
 end
 
 if options.verbose
