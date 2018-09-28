@@ -69,22 +69,24 @@ z_test <- recompute_z(Ysf, Ysf2)
 # algorithm parameters
 n_classes_observed = 4                                  # number of observed classes (clinician labels)
 n_true_classes = 2                                      # number of true classes
-max_iter = 500                                           # maximum number of iterations of EM before quitting with "did not converge"
+max_iter = 50                                           # maximum number of iterations of EM before quitting with "did not converge"
 
 ### EM Algorithm Implementation
 
 # create list variables to store values on every iteration so that I can track errors
 probs <- list(); prob_list <- list();
-sigma <- list(); B <- list(); zmat <- list(); u <- list()
+sigma <- list(); B <- list(); zmat <- list(); u <- list(); gammalist <- list();
 P_u <- list(); P_z <- list(); E_u <- list(); E_z <- list(); E_theta <- list()
 continue = TRUE
+
+
+z_better <- list()  # variable to track whether the update to z caused an increase in E_z
+u_better <- list()  # variable to track whether the update to u caused an increase in E_u 
 
 # Set theta_1 to some sensible values, where theta_1 = (Z, u)
 m <- matrix(runif(n_true_classes * n_classes_observed), nrow=n_classes_observed)    # initialize Z probability parameter matrix
 zmat[[1]] <- t(t(m)/colSums(m))                                                     # normalize the columns to sum to 1
 u[[1]] <- as.matrix(runif(nrow(Xs), 0, 1)) *c(-1,1,-1,1)                                         # initialize u weight vector
-#model <- glmnet(t(Xt), as.numeric(Ytf==1), family="binomial", alpha = 1)
-#u[[1]] <- as.matrix(model$beta[,ncol(model$beta)])
 
 
 #
@@ -96,9 +98,8 @@ compute_Pu <- function(u){
 }
 # THERE may be SOMETHING WRONG WITH THIS FUNCTION - dirichlet v. just post-normalization
 compute_Pz <- function(z){
-  #return(((1-sum(z[,1])) * prod(z[,1] ^ c(1,0,0,0))) * ((1-sum(z[,2])) * prod(z[,2] ^ c(0,1,0,0))))
-  #return((prod(z[,1] ^ c(1,0,0,0))) * ( prod(z[,2] ^ c(0,1,0,0))))
-  return(z[1,1] * z[2,2])
+  #return(z[1,1] * z[2,2])  # equivalent to: return((prod(z[,1] ^ c(1,0,0,0))) * ( prod(z[,2] ^ c(0,1,0,0))))
+  return((prod(z[,1] ^ c(1,.001,.001,.001))) * ( prod(z[,2] ^ c(.001,1,.001,.001))))
 }
 compute_Eu <- function(sigma, B, u){
   P_u <- compute_Pu(u)
@@ -107,8 +108,7 @@ compute_Eu <- function(sigma, B, u){
 }
 compute_Ez <- function(sigma, B, z, Ytf){  
   P_z <- compute_Pz(z)
-  #E_z <- log(P_z) + rowSums((1-B)*log(z[,1][Ytf]) + B*log(z[,2][Ytf])) 
-  E_z <- log(P_z) + rowSums((1-B)*log(z[,1][Ytf] + 1) + B*log(z[,2][Ytf] + 1)) 
+  E_z <- log(P_z) + rowSums((1-B)*log(z[,1][Ytf]) + B*log(z[,2][Ytf])) 
   return(E_z)
 }
 
@@ -151,21 +151,35 @@ for(i in seq(1:max_iter)){
   #
   
   ### Set z(i+1) ← argmax_z(Ez) by counting & normalizing
+  
+  print(compute_Ez(sigma[[i]], B[[i]], zmat[[i]], Ytf))
   gamma <- matrix(data = NA, nrow = nrow(zmat[[i]]), ncol = ncol(zmat[[i]]))
   for(obs in seq(1:n_classes_observed)){
-    gamma[obs, 1] = as.integer(obs==1) + sum(1 - B[[i]][Ytf == obs])
-    gamma[obs, 2] = as.integer(obs==2) + sum(B[[i]][Ytf == obs])
+    gamma[obs, 1] = max(as.integer(obs==1), .001) + sum(1 - B[[i]][Ytf == obs])
+    gamma[obs, 2] = max(as.integer(obs==2), .001) + sum(B[[i]][Ytf == obs])
   }
+  gammalist[[i]] <- gamma
   zmat[[i + 1]] <- t(t(gamma)/colSums(gamma))      # normalize the columns to sum to 1
-
+  print(compute_Ez(sigma[[i]], B[[i]], zmat[[i+1]], Ytf))
+  z_better[[i]] <- compute_Ez(sigma[[i]], B[[i]], zmat[[i+1]], Ytf) >= compute_Ez(sigma[[i]], B[[i]], zmat[[i]], Ytf)
+  
   ### Set u(i+1) ← argmax_u(Eu) using glmnet() with weights
   pseudo_dataset <- cbind(Xt, Xt)
   pseudo_labels <- c(rep(1, ncol(Xt)), rep(2, ncol(Xt)))
   weights_f <- c((1-B[[i]]), B[[i]])
-  model <- glmnet(t(pseudo_dataset), as.factor(pseudo_labels), family="binomial", weights = as.numeric(weights_f), alpha = 1) 
-  u[[i + 1]] <- model$beta[,ncol(model$beta)-10]  # NOTE: SHOULD GET LAMBDA PARAM BY CROSS-VALIDATION, just selected third-to-last lambda row randomly for now
+  model <- glmnet(t(pseudo_dataset), as.factor(pseudo_labels), family="binomial", weights = as.numeric(weights_f), alpha = 1, lambda = .0004) 
+  u[[i + 1]] <- as.matrix(model$beta)  # NOTE: SHOULD GET LAMBDA PARAM BY CROSS-VALIDATION, set to 0.0004 for now (randomly)
+  u_better[[i]] <- compute_Eu(sigma[[i]], B[[i]], u[[i + 1]]) >= compute_Eu(sigma[[i]], B[[i]], u[[i]])
   
 }
+
+print("z_better")
+unlist(z_better)
+sum(unlist(z_better))/length(unlist(z_better))
+print("u_better")
+unlist(u_better)
+sum(unlist(u_better))/length(unlist(u_better))
+
 
 # plots should show increasing E_u and E_z per iteration - THIS IS NOT THE CASE!! SOMETHING IS GOING WRONG
 par(mfrow=c(1,2))
@@ -176,15 +190,20 @@ plot(unlist(E_z), main = "E_z")
 
 
 # DEBUGGING - 
-#plot(unlist(lapply(B, function(x){return (rowSums(x > .5))}))) # this shows that the width between the predicted values is small
-
-# zmat[[24]] is the first time zeros appear in any zmat location
-# E_z[[24]] is the first NA value -> because, when we compute Ez, the term for log(z0cn) produces -Inf values.
-
 # variables that I can look at...
 # u, zmat, B, P_z, P_u
-
 # i think i'm calculating P_z and P_u correctly
 # computation of B seems to be correct
-# WHY ARE THE MATRIX COLUMNS SWITCHING PLACES???
+# WHY ARE THE MATRIX COLUMNS appearing to SWITCH PLACES in the result??? Is it just ending on a bad esimtation of z?
 
+# QUESTION - the way I have it impelented, the gamma_jk version of E_z isn't the same as the original E_z (what is the gamma there??)
+
+
+# for(i in seq(2:10)){
+#   print("zmat:")
+#   print(zmat[[i]])
+#   print("Ez")
+#   print(E_z[[i]])
+#   print("gammas")
+#   print(gammalist[[i]])
+# }
