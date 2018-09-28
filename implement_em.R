@@ -50,6 +50,8 @@ Ytf <- as.integer(as.factor(Yt))
 Ytf2 <- modify_input_labels(Ytf, z)
 z_fin <- recompute_z(Ytf,Ytf2)
 
+Ytf <- Ytf2
+
 print("Z estimated by EM algorithm should eventually be similar to:")
 print(z_fin)
 
@@ -67,7 +69,7 @@ z_test <- recompute_z(Ysf, Ysf2)
 # algorithm parameters
 n_classes_observed = 4                                  # number of observed classes (clinician labels)
 n_true_classes = 2                                      # number of true classes
-max_iter = 10                                           # maximum number of iterations of EM before quitting with "did not converge"
+max_iter = 500                                           # maximum number of iterations of EM before quitting with "did not converge"
 
 ### EM Algorithm Implementation
 
@@ -80,7 +82,9 @@ continue = TRUE
 # Set theta_1 to some sensible values, where theta_1 = (Z, u)
 m <- matrix(runif(n_true_classes * n_classes_observed), nrow=n_classes_observed)    # initialize Z probability parameter matrix
 zmat[[1]] <- t(t(m)/colSums(m))                                                     # normalize the columns to sum to 1
-u[[1]] <- as.matrix(runif(nrow(Xs), 0, 1))                                          # initialize u weight vector
+u[[1]] <- as.matrix(runif(nrow(Xs), 0, 1)) *c(-1,1,-1,1)                                         # initialize u weight vector
+#model <- glmnet(t(Xt), as.numeric(Ytf==1), family="binomial", alpha = 1)
+#u[[1]] <- as.matrix(model$beta[,ncol(model$beta)])
 
 
 #
@@ -92,21 +96,24 @@ compute_Pu <- function(u){
 }
 # THERE may be SOMETHING WRONG WITH THIS FUNCTION - dirichlet v. just post-normalization
 compute_Pz <- function(z){
-  return(((1-sum(z[,1])) * prod(z[,1] ^ c(1,0,0,0))) * ((1-sum(z[,2])) * prod(z[,2] ^ c(0,1,0,0))))
+  #return(((1-sum(z[,1])) * prod(z[,1] ^ c(1,0,0,0))) * ((1-sum(z[,2])) * prod(z[,2] ^ c(0,1,0,0))))
+  #return((prod(z[,1] ^ c(1,0,0,0))) * ( prod(z[,2] ^ c(0,1,0,0))))
+  return(z[1,1] * z[2,2])
 }
 compute_Eu <- function(sigma, B, u){
   P_u <- compute_Pu(u)
   E_u <- log(P_u) + rowSums((1-B)*log(1-sigma) + B*log(sigma))
   return(E_u)
 }
-
-# NOTE: is it OK to have added one (1) to all of these log values??
 compute_Ez <- function(sigma, B, z, Ytf){  
   P_z <- compute_Pz(z)
-  #E_z <- log(P_z + 1) + rowSums((1-B)*log(z[,1][Ytf] + 1) + B*log(z[,2][Ytf] + 1)) 
-  E_z <- log(P_z) + rowSums((1-B)*log(z[,1][Ytf]) + B*log(z[,2][Ytf])) 
+  #E_z <- log(P_z) + rowSums((1-B)*log(z[,1][Ytf]) + B*log(z[,2][Ytf])) 
+  E_z <- log(P_z) + rowSums((1-B)*log(z[,1][Ytf] + 1) + B*log(z[,2][Ytf] + 1)) 
   return(E_z)
 }
+
+
+
 
 
 #
@@ -134,8 +141,8 @@ for(i in seq(1:max_iter)){
   
   # verify increase in likelihoods per iteration; also, check if time to break loop
   if(i > 1){
-    print(paste("E_u increases each interation:", (E_u[[i]] > E_u[[i-1]]))) # E_u should increase after "u <- u_new"
-    print(paste("E_z increases each interation:", (E_z[[i]] > E_z[[i-1]]))) # E_z should increase after "zmat <- zmat_new"
+    print(paste("E_u increases each interation:", (E_u[[i]] > E_u[[i-1]])))  # E_u should increase after "u <- u_new"
+    print(paste("E_z increases each interation:", (E_z[[i]] > E_z[[i-1]])))  # E_z should increase after "zmat <- zmat_new"
     #if(prob_list[[i]] / prob_list[[i-1]] < 0.000000001) break               # check for exit criteria
   }
   
@@ -143,8 +150,7 @@ for(i in seq(1:max_iter)){
   # M-step
   #
   
-  ### Set z(i+1) ← argmaxz(Ez) by counting & normalizing
-  print(zmat[[i]])
+  ### Set z(i+1) ← argmax_z(Ez) by counting & normalizing
   gamma <- matrix(data = NA, nrow = nrow(zmat[[i]]), ncol = ncol(zmat[[i]]))
   for(obs in seq(1:n_classes_observed)){
     gamma[obs, 1] = as.integer(obs==1) + sum(1 - B[[i]][Ytf == obs])
@@ -152,12 +158,12 @@ for(i in seq(1:max_iter)){
   }
   zmat[[i + 1]] <- t(t(gamma)/colSums(gamma))      # normalize the columns to sum to 1
 
-  ### Set u(i+1) ← argmaxu(Eu) using glmnet() with weights
+  ### Set u(i+1) ← argmax_u(Eu) using glmnet() with weights
   pseudo_dataset <- cbind(Xt, Xt)
-  pseudo_labels <- cbind(rep(0, ncol(Xt)), rep(1, ncol(Xt)))
-  weights_f <- cbind((1-B[[i]]), B[[i]])
-  model <- glmnet(t(pseudo_dataset), as.numeric(pseudo_labels), family="binomial", weights = as.numeric(weights_f), alpha = 1) 
-  u[[i + 1]] <- model$beta[,ncol(model$beta)-3]  # NOTE: SHOULD GET LAMBDA PARAM BY CROSS-VALIDATION, just selected third-to-last lambda row randomly for now
+  pseudo_labels <- c(rep(1, ncol(Xt)), rep(2, ncol(Xt)))
+  weights_f <- c((1-B[[i]]), B[[i]])
+  model <- glmnet(t(pseudo_dataset), as.factor(pseudo_labels), family="binomial", weights = as.numeric(weights_f), alpha = 1) 
+  u[[i + 1]] <- model$beta[,ncol(model$beta)-10]  # NOTE: SHOULD GET LAMBDA PARAM BY CROSS-VALIDATION, just selected third-to-last lambda row randomly for now
   
 }
 
@@ -165,3 +171,20 @@ for(i in seq(1:max_iter)){
 par(mfrow=c(1,2))
 plot(unlist(E_u), main = "E_u")
 plot(unlist(E_z), main = "E_z")
+
+
+
+
+# DEBUGGING - 
+#plot(unlist(lapply(B, function(x){return (rowSums(x > .5))}))) # this shows that the width between the predicted values is small
+
+# zmat[[24]] is the first time zeros appear in any zmat location
+# E_z[[24]] is the first NA value -> because, when we compute Ez, the term for log(z0cn) produces -Inf values.
+
+# variables that I can look at...
+# u, zmat, B, P_z, P_u
+
+# i think i'm calculating P_z and P_u correctly
+# computation of B seems to be correct
+# WHY ARE THE MATRIX COLUMNS SWITCHING PLACES???
+
