@@ -31,7 +31,6 @@ recompute_z <- function(Ytf, Ytf2){
 }
 
 
-
 #
 # Set-up Data - Iris dataset - pre-specifying z-matrix and flipping labels in the probabilities given
 #
@@ -80,8 +79,11 @@ P_u <- list(); P_z <- list(); E_u <- list(); E_z <- list(); E_theta <- list()
 continue = TRUE
 
 
+# THESE TRACK whether new z and u values increase the expected value at each update.
 z_better <- list()  # variable to track whether the update to z caused an increase in E_z
+z_better2 <- list()
 u_better <- list()  # variable to track whether the update to u caused an increase in E_u 
+
 
 # Set theta_1 to some sensible values, where theta_1 = (Z, u)
 m <- matrix(runif(n_true_classes * n_classes_observed), nrow=n_classes_observed)    # initialize Z probability parameter matrix
@@ -90,7 +92,7 @@ u[[1]] <- as.matrix(runif(nrow(Xs), 0, 1)) *c(-1,1,-1,1)                        
 
 
 #
-# Functions definitiones that are used multiple times
+# Functions definitions that are used multiple times
 #
 
 compute_Pu <- function(u){
@@ -103,16 +105,25 @@ compute_Pz <- function(z){
 }
 compute_Eu <- function(sigma, B, u){
   P_u <- compute_Pu(u)
-  E_u <- log(P_u) + rowSums((1-B)*log(1-sigma) + B*log(sigma))
+  E_u <- log(P_u) + rowSums( ((1-B)*log(1-sigma)) + (B*log(sigma)) )
   return(E_u)
 }
 compute_Ez <- function(sigma, B, z, Ytf){  
   P_z <- compute_Pz(z)
-  E_z <- log(P_z) + rowSums((1-B)*log(z[,1][Ytf]) + B*log(z[,2][Ytf])) 
+  E_z <- log(P_z) + rowSums( ((1-B)*log(z[Ytf,1])) + (B*log(z[Ytf,2])) )
   return(E_z)
 }
 
-
+# there are two formulae for Ez, attempting to evaluate the second one listed in the paper.pdf
+compute_Ez2 <- function(sigma, B, z, Ytf){
+  gamma <- matrix(data = NA, nrow = nrow(z), ncol = ncol(z))
+  for(obs in seq(1:n_classes_observed)){
+    gamma[obs, 1] = max(as.integer(obs==1), .001) + sum(1 - B[Ytf == obs])
+    gamma[obs, 2] = max(as.integer(obs==2), .001) + sum(B[Ytf == obs])
+  }
+  Ez = sum(colSums(gamma * z))
+  return(Ez)
+}
 
 
 
@@ -121,7 +132,9 @@ compute_Ez <- function(sigma, B, z, Ytf){
 #
 
 for(i in seq(1:max_iter)){
+  
   print(paste("------- iteration:", i, " -------"))
+  
   
   #
   # E-step
@@ -129,7 +142,7 @@ for(i in seq(1:max_iter)){
   
   # calculate B[[i]] using current theta (u and z)
   sigma[[i]] <- sigmoid(t(u[[i]]) %*% Xt)     
-  B[[i]] = 1 / (1 + (((1-sigma[[i]]) * zmat[[i]][Ytf,1]) / (sigma[[i]] * zmat[[i]][Ytf,2])))   # lines in paper: P(bn=1|theta, xn, cn)
+  B[[i]] = 1 / (   1 + (  ( (1-sigma[[i]]) * zmat[[i]][Ytf,1] ) / ( sigma[[i]] * zmat[[i]][Ytf,2] )  )   )   # lines in paper: P(bn=1|theta, xn, cn)
   
   # compute other parameters that we want to track
   P_u[[i]] = compute_Pu(u[[i]])
@@ -137,7 +150,11 @@ for(i in seq(1:max_iter)){
   E_u[[i]] = compute_Eu(sigma[[i]], B[[i]], u[[i]])
   E_z[[i]] = compute_Ez(sigma[[i]], B[[i]], zmat[[i]], Ytf) 
   E_theta[[i]] = E_u[[i]] + E_z[[i]]
-  prob_list[[i]] = P_u[[i]] * P_z[[i]] * prod(as.numeric((sigma[[i]] * zmat[[i]][,2][Ytf]) + (1-sigma[[i]] * zmat[[i]][,1][Ytf])))
+  
+  prob_list[[i]] = P_u[[i]] * P_z[[i]] * prod(as.numeric((sigma[[i]] * zmat[[i]][Ytf,2]) + (1-sigma[[i]] * zmat[[i]][Ytf,1])))
+  #prob_list[[i]] = P_u[[i]] * P_z[[i]] * prod( (B[[i]]*zmat[[i]][Ytf,2]) + ((1-B[[i]])*zmat[[i]][Ytf,1])  )
+  
+  
   
   # verify increase in likelihoods per iteration; also, check if time to break loop
   if(i > 1){
@@ -145,6 +162,7 @@ for(i in seq(1:max_iter)){
     print(paste("E_z increases each interation:", (E_z[[i]] > E_z[[i-1]])))  # E_z should increase after "zmat <- zmat_new"
     #if(prob_list[[i]] / prob_list[[i-1]] < 0.000000001) break               # check for exit criteria
   }
+  
   
   #
   # M-step
@@ -161,7 +179,9 @@ for(i in seq(1:max_iter)){
   gammalist[[i]] <- gamma
   zmat[[i + 1]] <- t(t(gamma)/colSums(gamma))      # normalize the columns to sum to 1
   print(compute_Ez(sigma[[i]], B[[i]], zmat[[i+1]], Ytf))
-  z_better[[i]] <- compute_Ez(sigma[[i]], B[[i]], zmat[[i+1]], Ytf) >= compute_Ez(sigma[[i]], B[[i]], zmat[[i]], Ytf)
+  z_better[[i]] <- compute_Ez(sigma[[i]], B[[i]], zmat[[i+1]], Ytf) - compute_Ez(sigma[[i]], B[[i]], zmat[[i]], Ytf)
+  z_better2[[i]] <- compute_Ez2(sigma[[i]], B[[i]], zmat[[i+1]], Ytf) - compute_Ez2(sigma[[i]], B[[i]], zmat[[i]], Ytf)
+  
   
   ### Set u(i+1) ← argmax_u(Eu) using glmnet() with weights
   pseudo_dataset <- cbind(Xt, Xt)
@@ -169,19 +189,23 @@ for(i in seq(1:max_iter)){
   weights_f <- c((1-B[[i]]), B[[i]])
   model <- glmnet(t(pseudo_dataset), as.factor(pseudo_labels), family="binomial", weights = as.numeric(weights_f), alpha = 1, lambda = .0004) 
   u[[i + 1]] <- as.matrix(model$beta)  # NOTE: SHOULD GET LAMBDA PARAM BY CROSS-VALIDATION, set to 0.0004 for now (randomly)
-  u_better[[i]] <- compute_Eu(sigma[[i]], B[[i]], u[[i + 1]]) >= compute_Eu(sigma[[i]], B[[i]], u[[i]])
-  
+  u_better[[i]] <- compute_Eu(sigma[[i]], B[[i]], u[[i + 1]]) - compute_Eu(sigma[[i]], B[[i]], u[[i]])
+ 
+   
 }
 
+
+# if z and u are returning better results at each iteration, the values of z_better and u_better 
+# ( the difference between Expected Values at each iteration) should always be positive.
 print("z_better")
 unlist(z_better)
-sum(unlist(z_better))/length(unlist(z_better))
+sum(unlist(z_better) >= 0)/length(unlist(z_better))
 print("u_better")
 unlist(u_better)
-sum(unlist(u_better))/length(unlist(u_better))
+sum(unlist(u_better) >= 0)/length(unlist(u_better))
 
 
-# plots should show increasing E_u and E_z per iteration - THIS IS NOT THE CASE!! SOMETHING IS GOING WRONG
+# plots should show E_u and E_z per iteration
 par(mfrow=c(1,2))
 plot(unlist(E_u), main = "E_u")
 plot(unlist(E_z), main = "E_z")
