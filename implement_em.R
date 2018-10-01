@@ -113,6 +113,9 @@ compute_Ez <- function(sigma, B, z, Ytf){
   E_z <- log(P_z) + rowSums( ((1-B)*log(z[Ytf,1])) + (B*log(z[Ytf,2])) )
   return(E_z)
 }
+compute_B <- function(sigma, z, Ytf){
+  return( 1 / (   1 + (  ( (1-sigma) * z[Ytf,1] ) / ( sigma * z[Ytf,2] )  )   ) )
+}
 
 # there are two formulae for Ez, attempting to evaluate the second one listed in the paper.pdf
 compute_Ez2 <- function(sigma, B, z, Ytf){
@@ -142,7 +145,7 @@ for(i in seq(1:max_iter)){
   
   # calculate B[[i]] using current theta (u and z)
   sigma[[i]] <- sigmoid(t(u[[i]]) %*% Xt)     
-  B[[i]] = 1 / (   1 + (  ( (1-sigma[[i]]) * zmat[[i]][Ytf,1] ) / ( sigma[[i]] * zmat[[i]][Ytf,2] )  )   )   # lines in paper: P(bn=1|theta, xn, cn)
+  B[[i]] = compute_B(sigma[[i]], zmat[[i]], Ytf)    # lines in paper: P(bn=1|theta, xn, cn)
   
   # compute other parameters that we want to track
   P_u[[i]] = compute_Pu(u[[i]])
@@ -168,8 +171,9 @@ for(i in seq(1:max_iter)){
   # M-step
   #
   
-  ### Set z(i+1) ← argmax_z(Ez) by counting & normalizing
-  
+  #
+  # Set z(i+1) ← argmax_z(Ez) by counting & normalizing
+  # 
   print(compute_Ez(sigma[[i]], B[[i]], zmat[[i]], Ytf))
   gamma <- matrix(data = NA, nrow = nrow(zmat[[i]]), ncol = ncol(zmat[[i]]))
   for(obs in seq(1:n_classes_observed)){
@@ -183,14 +187,25 @@ for(i in seq(1:max_iter)){
   z_better2[[i]] <- compute_Ez2(sigma[[i]], B[[i]], zmat[[i+1]], Ytf) - compute_Ez2(sigma[[i]], B[[i]], zmat[[i]], Ytf)
   
   
-  ### Set u(i+1) ← argmax_u(Eu) using glmnet() with weights
+  #
+  # Set u(i+1) ← argmax_u(Eu) using glmnet() with weights
+  #
   pseudo_dataset <- cbind(Xt, Xt)
   pseudo_labels <- c(rep(1, ncol(Xt)), rep(2, ncol(Xt)))
   weights_f <- c((1-B[[i]]), B[[i]])
-  model <- glmnet(t(pseudo_dataset), as.factor(pseudo_labels), family="binomial", weights = as.numeric(weights_f), alpha = 1, lambda = .0004) 
-  u[[i + 1]] <- as.matrix(model$beta)  # NOTE: SHOULD GET LAMBDA PARAM BY CROSS-VALIDATION, set to 0.0004 for now (randomly)
-  u_better[[i]] <- compute_Eu(sigma[[i]], B[[i]], u[[i + 1]]) - compute_Eu(sigma[[i]], B[[i]], u[[i]])
- 
+  
+  # original method, naively picking lambda
+  #model <- glmnet(t(pseudo_dataset), as.factor(pseudo_labels), family="binomial", weights = as.numeric(weights_f), alpha = 1, lambda = .0004) 
+  #u[[i + 1]] <- as.matrix(model$beta)  # NOTE: SHOULD GET LAMBDA PARAM BY CROSS-VALIDATION, set to 0.0004 for now (randomly)
+  
+  # second attempted method using the cv.glmnet function to auto-select lambda
+  cvfit = cv.glmnet(t(pseudo_dataset), as.factor(pseudo_labels), family = "binomial", weights = as.numeric(weights_f), alpha = 1, intercept = FALSE)
+  u[[i + 1]] <- as.matrix(coef(cvfit, s = "lambda.min"))[2:(dim(Xt)[1] + 1),]
+  #u_better[[i]] <- compute_Eu(sigma[[i]], B[[i]], u[[i + 1]]) - compute_Eu(sigma[[i]], B[[i]], u[[i]])     # computing u with original sigma/Beta values
+  s <- sigmoid(t(u[[i + 1]]) %*% Xt)       # recompute sigma for use in new E_u 
+  b <- compute_B(s, zmat[[i+1]], Ytf)      # recompute b for use in new E_u
+  u_better[[i]] <- compute_Eu(s, b, u[[i + 1]]) - compute_Eu(sigma[[i]], B[[i]], u[[i]])
+  
    
 }
 
