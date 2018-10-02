@@ -110,9 +110,7 @@ plot_relevant_data <- function(result_arrays, plot_params, DS_SIZE_RANGE, DIM_RA
     
     # GENERATE p-values here
     EW <- evaluate_wilcox(raw_data)
-    
-    print(EW)
-    write.table(x, file = paste(plot_params$fileroot,"_Ptab.txt",sep=""))
+    write.table(EW, file = paste(plot_params$fileroot,"_Ptab.txt",sep=""))
     
     for(i in seq(1:length(configured_data))){
       
@@ -160,7 +158,6 @@ plot_relevant_data <- function(result_arrays, plot_params, DS_SIZE_RANGE, DIM_RA
   }
 
 }
-
 
 
 grab_grob <- function(){

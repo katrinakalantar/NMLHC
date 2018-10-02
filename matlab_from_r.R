@@ -40,7 +40,7 @@ load_matlab_libraries()   # load the .m files required for running the analysis 
 logger.info(paste("MAIN - matlab server status ", toString(isOpen)))
 
 #
-# set global options
+# set global options, quit script if required parameters were not provided
 # 
 
 stopifnot(check_params(parameters, c("ITER", "CLS", "DATASET_PARAM", 
@@ -49,7 +49,7 @@ stopifnot(check_params(parameters, c("ITER", "CLS", "DATASET_PARAM",
                                      "DS_SIZE_RANGE","DIM_RANGE","EXP_RANGE","EXP_RANGE_J")))
 
 
-ITER = parameters$ITER #2                             # number of iterations to run (to obtain mean performance)
+ITER = parameters$ITER #2                             
 CLS = parameters$CLS #2                              # number of classes
 DATASET_PARAM = parameters$DATASET_PARAM # 'generate_data'      # data generation method 
 
@@ -86,7 +86,7 @@ auc_gammalr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, EXP_RANGE_J, EXP_R
 
 for(dimr in seq(1:length(DIM_RANGE))){
   for(dsize in seq(1:length(DS_SIZE_RANGE))){
-    for(k in seq(1:ITER)){
+    for(k in seq(1:ITER)){           # number of iterations to run (to obtain mean performance)
       for(j in seq(1:length(EXP_RANGE_J))){
         for(i in seq(1:length(EXP_RANGE))){
           
@@ -175,9 +175,9 @@ for(dimr in seq(1:length(DIM_RANGE))){
 
 
 save_data(auc_lr, get_variable_name(auc_lr), EXPERIMENT_DIR)
-save_data(auc_rlr, get_variable_name(auc_lr), EXPERIMENT_DIR)
-save_data(err_lr, get_variable_name(auc_lr), EXPERIMENT_DIR)
-save_data(err_rlr, get_variable_name(auc_lr), EXPERIMENT_DIR)
+save_data(auc_rlr, get_variable_name(auc_rlr), EXPERIMENT_DIR)
+save_data(err_lr, get_variable_name(err_lr), EXPERIMENT_DIR)
+save_data(err_rlr, get_variable_name(err_rlr), EXPERIMENT_DIR)
 
 
 #
@@ -195,15 +195,23 @@ plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE,
 
 # THIS IS A HEATMAP PLOT
 plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file4", sep=""), "performance_metric" = "AUC")
-plot_relevant_data(list(lr = err_lr, rlr = err_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
+plot_relevant_data(list(lr = err_lr, rlr = err_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette)
 
 # THIS IS A LINE PLOT
 plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file2", sep=""), "performance_metric" = "AUC")
 plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
 
 # THIS IS A LINE PLOT
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file5", sep=""), "performance_metric" = "AUC")
+plot_relevant_data(list(lr = err_lr, rlr = err_rlr, gammalr = err_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
+
+
+# THIS IS A LINE PLOT
 plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = .1, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file3", sep=""), "performance_metric" = "AUC")
 plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J,  colorpal = discrete_pal, color_by_pval = TRUE)
+# THIS IS A LINE PLOT
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = .1, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file6", sep=""), "performance_metric" = "AUC")
+plot_relevant_data(list(lr = err_lr, rlr = err_rlr, gammalr = err_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J,  colorpal = discrete_pal, color_by_pval = TRUE)
 
 close(matlab)
 
