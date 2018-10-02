@@ -1,4 +1,147 @@
+evaluate_wilcox <- function( list_of_results ){
+  
+  pmat <- list()
+  
+  for(i in seq(1:length(list_of_results))){
+    for(j in seq(1:length(list_of_results))){
+      
+      if(j > i){
+        
+        p_values <- list()
+        for(k in seq(1:ncol(list_of_results[[1]]))){
+          p_values[[k]] <- wilcox.test(list_of_results[[i]][,k], list_of_results[[j]][,k])$p.value
+        } 
+        pmat[[paste(c("i",i,"_","j",j), collapse="")]] <- p_values
+      }
+    }
+  }
+  output_matrix <- matrix(unlist(pmat), nrow=length(pmat[[1]]))
+  colnames(output_matrix) <- names(pmat)
+  rownames(output_matrix) <- colnames(list_of_results[[1]])
+  return(output_matrix)
+  
+}
 
+
+plot_relevant_data <- function(result_arrays, plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, fileroot, performance_metric = "Error", colorpal = my_palette, color_by_pval = TRUE){
+  
+  index_1 <- which(DS_SIZE_RANGE == plot_params$DS_SIZE_RANGE)
+  index_2 <- which(DIM_RANGE == plot_params$DIM_RANGE)
+  index_4 <- which(EXP_RANGE_J == plot_params$EXP_RANGE_J)
+  index_5 <- which(EXP_RANGE == plot_params$EXP_RANGE)
+  
+  if(length(index_1) == 0){
+    index_1 <- 1:length(DS_SIZE_RANGE)
+  }
+  if(length(index_2) == 0){
+    index_2 <- 1:length(DIM_RANGE)
+  }
+  if(length(index_4) == 0){
+    index_4 <- 1:length(EXP_RANGE_J)
+  }
+  if(length(index_5) == 0){
+    index_5 <- 1:length(EXP_RANGE)
+  }
+  
+  configured_data <- list()
+  configured_sd <- list()
+  raw_data <- list()
+  
+  #configure data to plot
+  for(i in 1:length(result_arrays)){
+    
+    # compute the average over the desired part of the matrix
+    a = lapply(seq(dim(result_arrays[[i]])[3]), function(x) result_arrays[[i]][index_1, index_2, x, index_4, index_5])  # get multiple iterations' worth at a contstant error rate (both I and J remain the same), but evaluate all DIM x all DS_SIZEs
+    raw_data[[i]] <- do.call(rbind, a)
+    plot_data = Reduce("+", a)/length(a)
+    print(plot_data)
+    configured_data[[i]] <- plot_data
+    
+    # compute Standard Deviation for each mean value, using Reduce() function and formula: var(x) = E(x^2) - (E(x))^2
+    # https://stackoverflow.com/questions/38493741/calculating-standard-deviation-of-variables-in-a-large-list-in-r
+    list.squared.mean <- Reduce("+", lapply(a, "^", 2)) / length(a)
+    list.variance <- list.squared.mean - plot_data^2
+    list.sd <- sqrt(list.variance)
+    configured_sd[[i]] <- list.sd
+    
+  }
+  
+  #actually generate the plots
+  if(class(dim(configured_data[[1]])) == class(NULL)){  # this is a line-plot; plot all lines on top of each other
+    
+    print("creating line plot")
+    colors <- c("red","orange","green","blue","purple")
+    
+    # GENERATE p-values here
+    EW <- evaluate_wilcox(raw_data)
+    
+    print(EW)
+    
+    for(i in seq(1:length(configured_data))){
+      
+      pch_index <- rep(1, nrow(EW))
+      if(color_by_pval){
+        print("coloring by p-value")
+        pch_index <- as.integer(rowSums((EW < .05)[,grepl(i, colnames(EW))]) > 0) + 1
+      }
+      
+      CD = configured_data[[i]]
+      CD_sd = configured_sd[[i]]
+      xlab_split = strsplit(names(configured_data[[i]]), '_')[[1]]
+      xlabel = paste(xlab_split[1:length(xlab_split)-1],collapse=" ")
+      real_x_vals <- lapply(strsplit(names(configured_data[[i]]), '_'), function(l){return(as.integer(l[[3]]))})
+      
+      if(i == 1){
+        plot(unlist(real_x_vals), as.numeric(CD), xlab = xlabel, ylab = performance_metric, ylim = c(0,1), col=colors[i], pch = c(0, 16)[pch_index])                     # create new plot
+        arrows(unlist(real_x_vals), as.numeric(CD) - CD_sd, unlist(real_x_vals), as.numeric(CD) + CD_sd, length=0.05, angle=90, code=3, col="gray28")
+      }else{
+        points(unlist(real_x_vals), CD, col=colors[i], xlab = xlabel, ylab=performance_metric, pch = c(0, 16)[pch_index])                # plot already exists, add new points on top
+        arrows(unlist(real_x_vals), as.numeric(CD) - CD_sd, unlist(real_x_vals), as.numeric(CD) + CD_sd, length=0.05, angle=90, code=3, col="gray28")
+      }
+      
+      print(names(result_arrays))
+      legend("bottomleft", inset = 0.02, legend = names(result_arrays), col = colors[1:length(result_arrays)], lty=rep(1,length(result_arrays)), cex=.8) #horiz=TRUE, 
+      
+    }
+    
+  }else if(sum(dim(configured_data[[1]]) > 1) == length(dim(configured_data[[1]]))){  # this is a matrix plot; plot multiple matrices next to eachother
+    
+    plot_list = list()
+    for(gl in seq(1:length(configured_data))){
+      CD = configured_data[[gl]]
+      hmp = pheatmap(CD, cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE, 
+                     col=colorpal, main = paste(names(result_arrays)[[gl]],performance_metric),
+                     border_color = "black", fontsize_number = 10)
+      plot_list[[gl]] <- hmp[[4]]
+    }
+    g <- do.call(grid.arrange, plot_list)
+    
+  }
+  
+}
+
+
+
+grab_grob <- function(){
+  grid.echo()
+  grid.grab()
+}
+
+
+create_new_result_set <- function(DIM_RANGE, DS_SIZE_RANGE, EXP_RANGE_J, EXP_RANGE){
+  result_array <- array(
+    rep(0, length(DIM_RANGE) * length(DS_SIZE_RANGE) * ITER * length(EXP_RANGE_J) * length(EXP_RANGE)),
+    dim = c(length(DIM_RANGE), length(DS_SIZE_RANGE), ITER, length(EXP_RANGE_J), length(EXP_RANGE)),
+    dimnames = list(
+      paste("DIM", DIM_RANGE, sep=("_")),
+      paste("DS_SIZE", DS_SIZE_RANGE, sep=("_")),
+      paste("ITER", seq(1:ITER), sep=("_")),
+      paste("J_FLIP", EXP_RANGE_J, sep=("_")),
+      paste("I_FLIP", EXP_RANGE, sep=("_"))
+    )
+  )
+  return(result_array)
+}
 
 new_results_matrix <- function(EXP_RANGE, EXP_RANGE_J){
   mat <- matrix(data=NA, nrow=length(EXP_RANGE), ncol=length(EXP_RANGE_J))
