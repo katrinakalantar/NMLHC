@@ -1,4 +1,31 @@
+
+check_params <- function(parameters, required_params){
+  if(sum(required_params %in% names(parameters)) == length(required_params)){
+    return(TRUE)
+  }else{
+    logger.info(msg = "WARNING - the following parameters were not found in parameter .json file")
+    logger.info(msg = paste("WARNING - PARAMS - ",required_params[!(required_params %in% names(parameters))]))
+    return(FALSE)
+  }
+}
+
+save_data <- function(var, var_name, EXPERIMENT_DIR){
+  saveRDS(var, file = paste(c(EXPERIMENT_DIR, var_name,".rds"), collapse=""))
+}
+
+get_variable_name <- function(var) {
+  return(deparse(substitute(var)))
+}
+
+init_log <- function(parameters){
+  logger.info(msg = "INIT - Initializing Script")
+  logger.info(msg = paste("INIT - PARAMS - ",names(parameters), parameters, sep="\t"))  
+}
+
+
 evaluate_wilcox <- function( list_of_results ){
+  
+  logger.info(msg="FUNCTION - STATUS - evaluate_wilcox()")
   
   pmat <- list()
   
@@ -23,7 +50,9 @@ evaluate_wilcox <- function( list_of_results ){
 }
 
 
-plot_relevant_data <- function(result_arrays, plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, fileroot, performance_metric = "Error", colorpal = my_palette, color_by_pval = TRUE){
+plot_relevant_data <- function(result_arrays, plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette, color_by_pval = TRUE){
+  
+  logger.info(msg="FUNCTION - STATUS - plot_relevant_data()")
   
   index_1 <- which(DS_SIZE_RANGE == plot_params$DS_SIZE_RANGE)
   index_2 <- which(DIM_RANGE == plot_params$DIM_RANGE)
@@ -66,16 +95,24 @@ plot_relevant_data <- function(result_arrays, plot_params, DS_SIZE_RANGE, DIM_RA
     
   }
   
+  
+  plot_title <- paste(c("SIZE_RANGE: ", plot_params$DS_SIZE_RANGE, ", DIM_RANGE: ", plot_params$DIM_RANGE, ", J_RANGE: ", plot_params$EXP_RANGE_J, ", I RANGE: ", plot_params$EXP_RANGE),collapse="")
+  logger.info(msg = paste("PLOTTING - PARAMS - ", plot_params$fileroot))
+  logger.info(msg = paste("PLOTTING - PARAMS -", plot_title))
+  
   #actually generate the plots
   if(class(dim(configured_data[[1]])) == class(NULL)){  # this is a line-plot; plot all lines on top of each other
     
+    pdf(paste(plot_params$fileroot,".pdf",sep=""))
+    
     print("creating line plot")
-    colors <- c("red","orange","green","blue","purple")
+    colors <- colorpal #c("red","orange","green","blue","purple")
     
     # GENERATE p-values here
     EW <- evaluate_wilcox(raw_data)
     
     print(EW)
+    write.table(x, file = paste(plot_params$fileroot,"_Ptab.txt",sep=""))
     
     for(i in seq(1:length(configured_data))){
       
@@ -89,13 +126,13 @@ plot_relevant_data <- function(result_arrays, plot_params, DS_SIZE_RANGE, DIM_RA
       CD_sd = configured_sd[[i]]
       xlab_split = strsplit(names(configured_data[[i]]), '_')[[1]]
       xlabel = paste(xlab_split[1:length(xlab_split)-1],collapse=" ")
-      real_x_vals <- lapply(strsplit(names(configured_data[[i]]), '_'), function(l){return(as.integer(l[[3]]))})
+      real_x_vals <- lapply(strsplit(names(configured_data[[i]]), '_'), function(l){return(as.numeric(l[[3]]))})
       
       if(i == 1){
-        plot(unlist(real_x_vals), as.numeric(CD), xlab = xlabel, ylab = performance_metric, ylim = c(0,1), col=colors[i], pch = c(0, 16)[pch_index])                     # create new plot
+        plot(unlist(real_x_vals), as.numeric(CD), xlab = xlabel, ylab = plot_params$performance_metric, ylim = c(0,1), col=colors[i], pch = c(0, 16)[pch_index], main = plot_title)                     # create new plot
         arrows(unlist(real_x_vals), as.numeric(CD) - CD_sd, unlist(real_x_vals), as.numeric(CD) + CD_sd, length=0.05, angle=90, code=3, col="gray28")
       }else{
-        points(unlist(real_x_vals), CD, col=colors[i], xlab = xlabel, ylab=performance_metric, pch = c(0, 16)[pch_index])                # plot already exists, add new points on top
+        points(unlist(real_x_vals), CD, col=colors[i], xlab = xlabel, ylab= plot_params$performance_metric, pch = c(0, 16)[pch_index])                # plot already exists, add new points on top
         arrows(unlist(real_x_vals), as.numeric(CD) - CD_sd, unlist(real_x_vals), as.numeric(CD) + CD_sd, length=0.05, angle=90, code=3, col="gray28")
       }
       
@@ -103,6 +140,7 @@ plot_relevant_data <- function(result_arrays, plot_params, DS_SIZE_RANGE, DIM_RA
       legend("bottomleft", inset = 0.02, legend = names(result_arrays), col = colors[1:length(result_arrays)], lty=rep(1,length(result_arrays)), cex=.8) #horiz=TRUE, 
       
     }
+    dev.off()
     
   }else if(sum(dim(configured_data[[1]]) > 1) == length(dim(configured_data[[1]]))){  # this is a matrix plot; plot multiple matrices next to eachother
     
@@ -110,14 +148,17 @@ plot_relevant_data <- function(result_arrays, plot_params, DS_SIZE_RANGE, DIM_RA
     for(gl in seq(1:length(configured_data))){
       CD = configured_data[[gl]]
       hmp = pheatmap(CD, cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE, 
-                     col=colorpal, main = paste(names(result_arrays)[[gl]],performance_metric),
-                     border_color = "black", fontsize_number = 10)
+                     col=colorpal, main = paste(names(result_arrays)[[gl]],plot_params$performance_metric, "\n",plot_title),
+                     border_color = "black", fontsize_number = 10,cellheight=25,cellwidth=25, breaks = seq(0,1,by=.001))
       plot_list[[gl]] <- hmp[[4]]
     }
+    pdf(paste(plot_params$fileroot, ".pdf",sep=""))
+    par(mar=c(5,15,5,5))
     g <- do.call(grid.arrange, plot_list)
+    dev.off()
     
   }
-  
+
 }
 
 
@@ -129,6 +170,7 @@ grab_grob <- function(){
 
 
 create_new_result_set <- function(DIM_RANGE, DS_SIZE_RANGE, EXP_RANGE_J, EXP_RANGE){
+  logger.info(msg="FUNCTION - STATUS - create_new_result_set()")
   result_array <- array(
     rep(0, length(DIM_RANGE) * length(DS_SIZE_RANGE) * ITER * length(EXP_RANGE_J) * length(EXP_RANGE)),
     dim = c(length(DIM_RANGE), length(DS_SIZE_RANGE), ITER, length(EXP_RANGE_J), length(EXP_RANGE)),
@@ -143,12 +185,6 @@ create_new_result_set <- function(DIM_RANGE, DS_SIZE_RANGE, EXP_RANGE_J, EXP_RAN
   return(result_array)
 }
 
-new_results_matrix <- function(EXP_RANGE, EXP_RANGE_J){
-  mat <- matrix(data=NA, nrow=length(EXP_RANGE), ncol=length(EXP_RANGE_J))
-  rownames(mat) <- EXP_RANGE
-  colnames(mat) <- EXP_RANGE_J
-  return(mat)
-}
 
 get_error <- function(weights, test_data, test_labels){
   return(sum(as.numeric((addbias(test_data) %*% weights > 0)) != (as.numeric(castLabel(test_labels,-1)) > 0))/ length(test_labels))
@@ -192,6 +228,7 @@ castLabel <- function(y, t){
 
 
 load_matlab_libraries <- function(){
+  logger.info(msg="FUNCTION - STATUS - load_matlab_libraries()")
   #
   # Load all the files required to run the estimation procedures
   #

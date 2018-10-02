@@ -1,12 +1,30 @@
-library(R.matlab)   # enables cross-talk with matlab server
-library(PopED)      # contains feval function
-library(matlab)     # contains repmat function equivalent to matlab version
-library(pROC)       # contains roc function
-library(glmnet)     # contains glmnet function for regularized regression in standard R library
-library(gplots)     # contains heatmap.2 function
+library(R.matlab)      # enables cross-talk with matlab server
+library(PopED)         # contains feval function
+library(matlab)        # contains repmat function equivalent to matlab version
+library(pROC)          # contains roc function
+library(glmnet)        # contains glmnet function for regularized regression in standard R library
+library(gplots)        # contains heatmap.2 function
+library(jsonlite)      # enables reading .json input parameters
+library(pheatmap)      # enables plotting heatmap from pheatmap package
+library(grid)          # plot multiple heatmaps on one page
+library(gridExtra)     # plot multiple heatmaps on one page
+library(ggplot2)       # contains the "theme()" function used for controlling margins of multiple pheatmaps
+library(RColorBrewer)  # contains color palettes used in line plots
 
 source("/Users/kkalantar/Documents/Research/NMLHC/nmlhc_matlab2R_functions.R")
 source("/Users/kkalantar/Documents/Research/NMLHC/pylogger.R")  #sourced from: https://gist.github.com/jonathancallahan/3ed51265d3c6d56818458de95567d3ae
+
+
+#
+# set the experiment directory - this will contain the input parameter file and is where all the output will be written
+#
+
+EXPERIMENT_DIR <- "/Users/kkalantar/Documents/Research/NMLHC/EXPERIMENTS/Experiment_1/"
+
+parameters <- read_json(paste(EXPERIMENT_DIR, "parameters2.json", sep=""), simplifyVector = TRUE)
+logger.setup(infoLog = paste(EXPERIMENT_DIR, "info.txt"))
+init_log(parameters)
+
 
 #
 # Open the Matlab server
@@ -19,37 +37,37 @@ Matlab$startServer()
 isOpen <- open(matlab)
 load_matlab_libraries()   # load the .m files required for running the analysis / estimation procedures
 
+logger.info(paste("MAIN - matlab server status ", toString(isOpen)))
+
 #
 # set global options
 # 
 
-#### could we have a "params" object that just gets loaded and then we have params$iter, params$cls, params$ds_size, params$dataset_param, params$n_features, etc.
-
-#INPUT_DIR = ;
-#OUTPUT_DIR = ;
-#logger.setup(infoLog = paste(OUTPUT_DIR, "info.txt"))
-# logger.info(msg = "")
+stopifnot(check_params(parameters, c("ITER", "CLS", "DATASET_PARAM", 
+                                     "use_PCs","feature_select",
+                                     "common_reg","common_sn","common_maxIter",
+                                     "DS_SIZE_RANGE","DIM_RANGE","EXP_RANGE","EXP_RANGE_J")))
 
 
-ITER = 2                             # number of iterations to run (to obtain mean performance)
-CLS = 2                              # number of classes
-DATASET_PARAM = 'generate_data'      # data generation method 
+ITER = parameters$ITER #2                             # number of iterations to run (to obtain mean performance)
+CLS = parameters$CLS #2                              # number of classes
+DATASET_PARAM = parameters$DATASET_PARAM # 'generate_data'      # data generation method 
 
-use_PCs = FALSE
-feature_select = TRUE
+use_PCs = parameters$use_PCs #FALSE
+feature_select = parameters$feature_select #TRUE
 
-common_reg = 'lasso'                 # regularization type
-common_sn = 1e-8;                    # 
-common_maxIter = 1000                # max iterations for the algorithm
+common_reg = parameters$common_reg #'lasso'                 # regularization type
+common_sn = parameters$common_sn # 1e-8;                    # 
+common_maxIter = parameters$common_maxIter # 1000                # max iterations for the algorithm
 
 # parameters iterated
 #EXP_RANGE       = c(0, .01, .025, .05, .1, .15, .2, .3, .4, .5);  # y-axis of heatmap
 #EXP_RANGE_J     = c(0, .01, .025, .05, .1, .15, .2, .3, .4, .5);  # x-axis of heatmap
 
-DS_SIZE_RANGE   = c(200)
-DIM_RANGE       = c(2000)
-EXP_RANGE       = c(10, 50, 100, 500, 1000, 2500, 5000) # this range was used for sample sizes
-EXP_RANGE_J     = c(.3, .2); # x-axis of heatmap
+DS_SIZE_RANGE   = parameters$DS_SIZE_RANGE #c(200)
+DIM_RANGE       = parameters$DIM_RANGE #c(2000)
+EXP_RANGE       = parameters$EXP_RANGE #c(10, 50, 100, 500, 1000, 2500, 5000) # this range was used for sample sizes
+EXP_RANGE_J     = parameters$EXP_RANGE_J #c(.3, .2); # x-axis of heatmap
 
 #err_lr = list(); err_lr_nonoise = list(); err_rlr = list(); err_gammalr =  list ();     # preallocating error storage
 #auc_lr = list(); auc_lr_nonoise = list(); auc_rlr = list(); auc_gammalr = list();       # preallocating AUC storage
@@ -72,15 +90,16 @@ for(dimr in seq(1:length(DIM_RANGE))){
       for(j in seq(1:length(EXP_RANGE_J))){
         for(i in seq(1:length(EXP_RANGE))){
           
-          # DO STUFF IN HERE
-          
           DIM = DIM_RANGE[dimr];  # n_features
           DS_SIZE = DS_SIZE_RANGE[dsize];
           flip_j = EXP_RANGE_J[j]
           flip_i = EXP_RANGE[i]
           
+          logger.info(msg = paste(c("MAIN - ITER - ", "DIM = ", DIM, ", DS_SIZE = ", DS_SIZE, 
+                                    ", flip_j = ", flip_j, ", flip_i = ", flip_i, ", K = ", k), collapse="" ))
+          
           # obtain the data to be used in this analysess
-          dataset <- feval(DATASET_PARAM, CLS, DIM, DS_SIZE, 1000, 1, "gen")
+          dataset <- feval(DATASET_PARAM, as.numeric(CLS), as.numeric(DIM), as.numeric(DS_SIZE), 1000, 1, "gen")
           
           Xt = dataset$x
           yt = dataset$y
@@ -100,7 +119,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
           
           # rLR (using true labels) to give baseline of number of features
           options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-          options$estG = FALSE
+          options$estG = parameters$estG #FALSE
           options$regFunc = common_reg
           options$sn = common_sn
           ginit = cbind(c(1,0),c(0,1))
@@ -155,21 +174,36 @@ for(dimr in seq(1:length(DIM_RANGE))){
 }
 
 
+save_data(auc_lr, get_variable_name(auc_lr), EXPERIMENT_DIR)
+save_data(auc_rlr, get_variable_name(auc_lr), EXPERIMENT_DIR)
+save_data(err_lr, get_variable_name(auc_lr), EXPERIMENT_DIR)
+save_data(err_rlr, get_variable_name(auc_lr), EXPERIMENT_DIR)
+
+
 #
 # Plotting Functions
 #
 
-my_palette <- colorRampPalette(c("purple3", "white"))(n = 100)
-my_palette2 <- colorRampPalette(c("white", "green4"))(n = 1001)
-my_palette3 <- colorRampPalette(c("blue", "white","red"))(n=100)
+my_palette <- colorRampPalette(c("purple3", "white"))(n = 1001)
+#my_palette3 <- colorRampPalette(c("blue", "white","red"))(n=100)
+my_palette2 <- colorRampPalette(c("white", "green4"))(n = 1001)    # continuous color scale for heatmaps
+discrete_pal <- brewer.pal(6, "Spectral")                          # color palette for discrete variables - line plots for different conditions
 
 # THIS IS A HEATMAP PLOT
-plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL)
-plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, fileroot, performance_metric = "AUC", colorpal = my_palette2)
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
+plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
+
+# THIS IS A HEATMAP PLOT
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file4", sep=""), "performance_metric" = "AUC")
+plot_relevant_data(list(lr = err_lr, rlr = err_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
 
 # THIS IS A LINE PLOT
-plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3)
-plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, fileroot, performance_metric = "AUC", colorpal = my_palette2, color_by_pval = TRUE)
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file2", sep=""), "performance_metric" = "AUC")
+plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
+
+# THIS IS A LINE PLOT
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = .1, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file3", sep=""), "performance_metric" = "AUC")
+plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J,  colorpal = discrete_pal, color_by_pval = TRUE)
 
 close(matlab)
 
@@ -195,6 +229,8 @@ close(matlab)
 # ew <- evaluate_wilcox(raw_data)
 # # if you have a matrix w that is the wilcox p-value results...
 # which(w<0.05,arr.ind = T) # gives you the index values that are significantly different
+
+
 
 
 
