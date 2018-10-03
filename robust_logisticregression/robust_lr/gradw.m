@@ -25,15 +25,8 @@ tmp2  = (gamma(2,1) - gamma(1,1)) * (D .* (1 - y) ./ s0);
 
        
 gAux1 = (tmp1 + tmp2) ./ (1+exp(-t)) .* (1 ./ ((1 ./ exp(-t))+1));
-size(gAux1)
 
 % completed Eq.34 with dot product with x_n
 gAux2 = repmat(gAux1, 1, size(x,2)) .* x;
-"size gAux2"
-size(gAux2)
-"size -sum(gAux2,1)"
-size(-sum(gAux2,1))
-"size -sum(gAux2,1)'"
-size(-sum(gAux2,1)')
 dfv   = -sum(gAux2,1)' + (lambda .* regDV);
 
