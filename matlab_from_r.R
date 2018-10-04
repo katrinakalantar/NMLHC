@@ -80,14 +80,14 @@ EXP_RANGE       = parameters$EXP_RANGE
 EXP_RANGE_J     = parameters$EXP_RANGE_J
 
 # preallocating error storage
-err_lr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, nrow(parameters$datasets), EXP_RANGE_J, EXP_RANGE);
-err_rlr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, nrow(parameters$datasets), EXP_RANGE_J, EXP_RANGE);
-err_gammalr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, nrow(parameters$datasets), EXP_RANGE_J, EXP_RANGE);
+err_lr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
+err_rlr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
+err_gammalr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 
 # preallocating AUC storage
-auc_lr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, nrow(parameters$datasets), EXP_RANGE_J, EXP_RANGE);
-auc_rlr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, nrow(parameters$datasets), EXP_RANGE_J, EXP_RANGE);
-auc_gammalr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, nrow(parameters$datasets), EXP_RANGE_J, EXP_RANGE);
+auc_lr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
+auc_rlr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
+auc_gammalr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 
 
 #
@@ -103,13 +103,16 @@ for(dimr in seq(1:length(DIM_RANGE))){
       #                 draw train/test sets which will remain the same for all iterations of flipping...seems OK to me)
       DIM = DIM_RANGE[dimr]  # n_features
       DS_SIZE = DS_SIZE_RANGE[dsize]
+      
       list_of_datasets <- list()
       for(x in rownames(parameters$datasets)){
         d <- parameters$datasets[x,]
         if(d$type == "gen"){
-          list_of_datasets[[d$name]] <- feval("generate_data", as.numeric(CLS), as.numeric(DIM), as.numeric(DS_SIZE), 1000, 1, "gen")
+          list_of_datasets[[d$name]] <- feval("generate_data", as.numeric(CLS), as.numeric(DIM), as.numeric(DS_SIZE), 1000, as.numeric(d$class_sep), "gen")
+          logger.info(msg=paste(c("DATA - GEN - ", "CLS: ", CLS, ", DIM: ", DIM, ", DS_SIZE: ", DS_SIZE, ", CLASS_SEP: ", d$class_sep), collapse=""))
         }else if(d$type == "geo"){
           list_of_datasets[[d$name]] <- feval('subset_geo', d$name, list_of_geo_datasets)
+          logger.info(msg=paste("DATA - GEO - ", d$name, sep=""))
         }else{
           list_of_datasets[[d$name]] <- NULL
         }
@@ -296,12 +299,20 @@ discrete_pal <- brewer.pal(6, "Spectral")                          # color palet
 close(matlab)
 
 # THIS IS A HEATMAP PLOT
-plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data", "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
-plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data2", "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
+plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
+
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = NULL, "EXP_RANGE" = NULL, "EXP_RANGE_J" = .2, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
+plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
+
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data1", "EXP_RANGE" = NULL, "EXP_RANGE_J" = .2, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
+plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
 
 # THIS IS A LINE PLOT
-plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data", "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file2", sep=""), "performance_metric" = "AUC")
-plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data1", "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file2", sep=""), "performance_metric" = "AUC")
+plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data2", "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file3", sep=""), "performance_metric" = "AUC")
+plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
 
 
 # 

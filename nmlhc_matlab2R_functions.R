@@ -167,7 +167,7 @@ plot_relevant_data_withdataset <- function(result_arrays, plot_params, DS_SIZE_R
       xlab_split = strsplit(names(configured_data[[i]]), '_')[[1]]
       xlabel = paste(xlab_split[1:length(xlab_split)-1],collapse=" ")
       real_x_vals <- lapply(strsplit(names(configured_data[[i]]), '_'), function(l){return(as.numeric(l[[3]]))})
-      
+
       if(i == 1){
         plot(unlist(real_x_vals), as.numeric(CD), xlab = xlabel, ylab = plot_params$performance_metric, ylim = c(0,1), col=colors[i], pch = c(0, 16)[pch_index], main = plot_title)                     # create new plot
         arrows(unlist(real_x_vals), as.numeric(CD) - CD_sd, unlist(real_x_vals), as.numeric(CD) + CD_sd, length=0.05, angle=90, code=3, col="gray28")
@@ -184,18 +184,44 @@ plot_relevant_data_withdataset <- function(result_arrays, plot_params, DS_SIZE_R
     
   }else if(sum(dim(configured_data[[1]]) > 1) == length(dim(configured_data[[1]]))){  # this is a matrix plot; plot multiple matrices next to eachother
     
+    overlap_res <- NULL
+    
     plot_list = list()
     for(gl in seq(1:length(configured_data))){
       CD = configured_data[[gl]]
+      
+      # prep plotting data for ggplot 
+      if(gl == 1){
+        df <- melt(CD)
+        df$gl <- rep(names(result_arrays)[gl], nrow(df))
+        overlap_res <- df
+      }else{
+        df <- melt(CD)
+        df$gl <- rep(names(result_arrays)[gl], nrow(df))
+        overlap_res <- rbind(overlap_res, df)
+      }
+      
       hmp = pheatmap(CD, cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE, 
                      col=colorpal, main = paste(names(result_arrays)[[gl]],plot_params$performance_metric, "\n",plot_title),
                      border_color = "black", fontsize_number = 10,cellheight=25,cellwidth=25, breaks = seq(0,1,by=.001))
       plot_list[[gl]] <- hmp[[4]]
     }
+
     pdf(paste(plot_params$fileroot, ".pdf",sep=""))
     par(mar=c(5,15,5,5))
     g <- do.call(grid.arrange, plot_list)
     dev.off()
+    
+    # This can make plots overlapping datasets if you use a command like this:
+    #print(df)
+    #print(overlap_res)
+    ggplot(overlap_res, aes(x=Var2, y=value, colour=Var1, shape = as.factor(gl),
+                  group=interaction(Var1, gl))) + geom_point(size = 3) + ylim(0,1) + ggtitle(paste(plot_params$performance_metric, ": ",plot_title)) +
+                theme(plot.title = element_text(size = 10))
+    ggsave(paste(plot_params$fileroot, "_ggplot.pdf",sep=""), plot = last_plot(), device = NULL, path = NULL,
+           scale = 1, width = 8, height = 5, units = c("in"),
+           dpi = 300)
+    
     
   }
   
@@ -321,8 +347,8 @@ grab_grob <- function(){
 create_new_result_set <- function(DIM_RANGE, DS_SIZE_RANGE, DATASETS, EXP_RANGE_J, EXP_RANGE){
   logger.info(msg="FUNCTION - STATUS - create_new_result_set()")
   result_array <- array(
-    rep(0, length(DIM_RANGE) * length(DS_SIZE_RANGE) * DATASETS * ITER * length(EXP_RANGE_J) * length(EXP_RANGE)),
-    dim = c(length(DIM_RANGE), length(DS_SIZE_RANGE), DATASETS, ITER, length(EXP_RANGE_J), length(EXP_RANGE)),
+    rep(0, length(DIM_RANGE) * length(DS_SIZE_RANGE) * length(DATASETS) * ITER * length(EXP_RANGE_J) * length(EXP_RANGE)),
+    dim = c(length(DIM_RANGE), length(DS_SIZE_RANGE), length(DATASETS), ITER, length(EXP_RANGE_J), length(EXP_RANGE)),
     dimnames = list(
       paste("DIM", DIM_RANGE, sep=("_")),
       paste("DS_SIZE", DS_SIZE_RANGE, sep=("_")),
