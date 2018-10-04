@@ -1,5 +1,76 @@
 
-possibly_run_rlr <- possibly(run_rlr, otherwise = NA)
+simulate_data <- function(original_dataset_name, n_samples ){
+  training_dataset_normalized <- NULL
+  test_dataset_normalized <- NULL
+  
+  if(original_dataset_name == "mBAL"){
+    input_data <- filtered_eset     # from mBALPkg
+    TRAINING_NAMES <- c("TA.212","TA.225","TA.298","TA.304","TA.314","TA.315","TA.335","TA.337","TA.343","TA.350", 
+                        "TA.349","TA.273","TA.331","TA.221","TA.220","TA.215","TA.270","TA.241","TA.211","TA.218")  # same as in mBAL study    
+    DEgenes <- read.table("Documents/Research/NMLHC/Exp1_HostBenchmark/data/DEgenes.csv")                           # taken from mBAL study
+    
+    training_set <- input_data[,TRAINING_NAMES]
+    test_set <- input_data[,!(colnames(input_data) %in% TRAINING_NAMES)]
+    training_dataset <- generate_simulated_data(training_set[,training_set$effective_group == 4],  
+                                                training_set[,training_set$effective_group == 1], n_samples, DEgenes)
+    test_dataset <- generate_simulated_data(test_set[,test_set$effective_group == 4], 
+                                            test_set[,test_set$effective_group == 1], n_samples, DEgenes)
+    training_dataset_normalized <- make_sim_eset(t(t(training_dataset)/colSums(training_dataset)))    # TSS normalize the simulated data
+    test_dataset_normalized <- make_sim_eset(t(t(test_dataset)/colSums(test_dataset)))
+  }
+  
+  return(list("x" = t(as.matrix(exprs(training_dataset_normalized))), "y" = as.matrix(as.numeric(training_dataset_normalized$classification)), "ff" = as.matrix(rep(0, length(training_dataset_normalized$classification))),
+              "xx" = t(as.matrix(exprs(test_dataset_normalized))), "tt" = as.matrix(as.numeric(test_dataset_normalized$classification)), "dd" = as.matrix(rep(0, length(test_dataset_normalized$classification)))))
+}
+
+
+
+
+generate_simulated_data <- function(negative_reference_data, positive_reference_data, n = 5, DEgenes){
+  new_negatives <- c()
+  new_positives <- c()
+  
+  min_dim <- min(dim(negative_reference_data)[2], dim(positive_reference_data)[2])/2
+  
+  for(i in seq(1:n)){
+    sd1 <- SimData(cbind(exprs(negative_reference_data), exprs(positive_reference_data)), 
+                   treatment = c(rep(0,as.integer(dim(negative_reference_data)[2])),rep(1,as.integer(dim(positive_reference_data)[2]))), 
+                   genes.select = rep(TRUE,length(rownames(exprs(positive_reference_data)))),
+                   genes.diff = (rownames(exprs(positive_reference_data)) %in% sample(DEgenes$V1, 800)),
+                   n.diff = 800, k.ind=min_dim, sort.method="unpaired", switch.trt=1)
+    sd2 <- SimData(cbind(exprs(negative_reference_data), exprs(positive_reference_data)), 
+                   treatment = c(rep(0,as.integer(dim(negative_reference_data)[2])),rep(1,as.integer(dim(positive_reference_data)[2]))),
+                   genes.select = rep(TRUE,length(rownames(exprs(positive_reference_data)))),
+                   genes.diff = (rownames(exprs(positive_reference_data)) %in% sample(DEgenes$V1, 800)),
+                   n.diff = 800, k.ind=min_dim, sort.method="unpaired", switch.trt=0)
+    if(i == 1){
+      new_negatives <- sd1$counts[,1:min_dim] 
+      new_positives <- sd2$counts[,(min_dim + 1):(min_dim*2)]
+    }else{
+      new_negatives <- cbind(new_negatives, sd1$counts[,1:min_dim] )
+      new_positives <- cbind(new_positives,sd2$counts[,(min_dim + 1):(min_dim*2)])    
+    }
+  }
+  
+  return_dataset <- cbind(new_positives, new_negatives)
+  colnames(return_dataset) <- c(lapply(seq(1:ncol(new_positives)), function(x){return(paste("Sim",x,"_Group","1",sep=""))}), lapply(seq(1:ncol(new_negatives)), function(x){return(paste("Sim",x,"_Group","0",sep=""))}))
+  return(return_dataset)
+}
+
+make_sim_eset <- function(input_data){
+  pd <- cbind(as.integer(grepl("Group1", colnames(input_data))), rep("sim", length(colnames(input_data))))
+  rownames(pd) <- colnames(input_data)
+  colnames(pd) <- c("classification","simulated_status")
+  return(ExpressionSet(input_data, phenoData = AnnotatedDataFrame(as.data.frame(pd))))
+}
+
+
+
+
+
+
+
+#possibly_run_rlr <- possibly(run_rlr, otherwise = NA)
 
 split_train_test <- function(input){
   print("inside split_train_test()")
@@ -361,6 +432,20 @@ create_new_result_set <- function(DIM_RANGE, DS_SIZE_RANGE, DATASETS, EXP_RANGE_
   return(result_array)
 }
 
+create_new_feature_set <- function(EXP_RANGE_J, EXP_RANGE, features){
+  logger.info(msg="FUNCTION - STATUS - create_new_feature_set()")
+  result_array <- array(
+    rep(0, ITER * length(EXP_RANGE_J) * length(EXP_RANGE) * length(features)),
+    dim = c( ITER, length(EXP_RANGE_J), length(EXP_RANGE), length(features)),
+    dimnames = list(
+      paste("ITER", seq(1:ITER), sep=("_")),
+      paste("J_FLIP", EXP_RANGE_J, sep=("_")),
+      paste("I_FLIP", EXP_RANGE, sep=("_")),
+      paste(features)
+    )
+  )
+  return(result_array)
+}
 
 get_error <- function(weights, test_data, test_labels){
   return(sum(as.numeric((addbias(test_data) %*% weights > 0)) != (as.numeric(castLabel(test_labels,-1)) > 0))/ length(test_labels))
@@ -467,6 +552,8 @@ run_rlr <- function(method, winit, ginit, train_data, train_labels, options, tes
 }
 
 
+
+
 subset_geo <- function(geo_dataset_name, geo_dataset_list){
   split <- strsplit(geo_dataset_name, "_")
   print(split)
@@ -492,11 +579,17 @@ generate_data <- function(CLS, DIM, DS_SIZE, N_TEST = 1000, CLS_SEP = 1, DT = 'g
   # use matlab genData function
   evaluate(matlab, "[x, y, ff, xx, tt, dd] = genData(CLS,DIM,DS_SIZE,N_TEST,CLS_SEP,DT);")
   
+  x = getVariable(matlab, "x")[[1]]
+  colnames(x) <- seq(1:ncol(x))
+  
+  xx = getVariable(matlab, "xx")[[1]]
+  colnames(xx) <- seq(1:ncol(xx))
+  
   # get the variables back
-  return(list(x = getVariable(matlab, "x")[[1]], 
+  return(list(x = x, 
               y = getVariable(matlab, "y")[[1]], 
               ff = getVariable(matlab, "ff")[[1]], 
-              xx = getVariable(matlab, "xx")[[1]], 
+              xx = xx, 
               tt = getVariable(matlab, "tt")[[1]], 
               dd = getVariable(matlab, "dd")[[1]]))
 }

@@ -12,6 +12,9 @@ library(ggplot2)       # contains the "theme()" function used for controlling ma
 library(RColorBrewer)  # contains color palettes used in line plots
 library(purrr)         # contains the possibly() function to enable continued execution after mablab error
 library(permute)       # contains the shuffle() function used in nmlhc_matlab2R_functions.R
+library(reshape2)      # contains the melt() function used in ggplot 
+library(mBALPkg)       # contains the data required to simulate data from mini-BAL cohort
+library(SimSeq)        # package required for simulation from an existing dataset
 
 source("/Users/kkalantar/Documents/Research/NMLHC/nmlhc_matlab2R_functions.R")
 source("/Users/kkalantar/Documents/Research/NMLHC/pylogger.R")  #sourced from: https://gist.github.com/jonathancallahan/3ed51265d3c6d56818458de95567d3ae
@@ -41,6 +44,7 @@ load_matlab_libraries()   # load the .m files required for running the analysis 
 
 logger.info(paste("MAIN - matlab server status ", toString(isOpen)))
 
+
 #
 # set global options, quit script if required parameters were not provided
 # 
@@ -54,19 +58,15 @@ stopifnot(check_params(parameters, c("ITER", "CLS", "DATASET_PARAM",
 ITER = parameters$ITER                              
 CLS = parameters$CLS                               # number of classes
 DATASET_PARAM = parameters$DATASET_PARAM           # data generation method 
-
-use_PCs = parameters$use_PCs #FALSE
-feature_select = parameters$feature_select #TRUE
-
-common_reg = parameters$common_reg #'lasso'                 # regularization type
-common_sn = parameters$common_sn # 1e-8;                    # 
-common_maxIter = parameters$common_maxIter # 1000                # max iterations for the algorithm
+use_PCs = parameters$use_PCs
+feature_select = parameters$feature_select 
+common_reg = parameters$common_reg                 # regularization type
+common_sn = parameters$common_sn      
+common_maxIter = parameters$common_maxIter         # max iterations for the algorithm
 
 
-# BRAINSTORMING - load all GEO datasets up front (bc this is slow) - MAY WANT TO DO THIS ITERATIVELY OR IN A LIST 
-# for i in parameters$datasets
-# if parameters$datasets$type == GEO #add file to list_of_geos with name = parameters$datasets$name using filename parameters$datasets$seriesfile
-list_of_geo_datasets <- list()     # create a list of available geo datasets (pre-loaded for speed of access in FOR LOOP)
+# load all GEO datasets up front (bc this is slow) 
+list_of_geo_datasets <- list()     
 for(dat in rownames(parameters$datasets)){
   d <- parameters$datasets[dat,]
   if(d$type == "geo"){
@@ -90,6 +90,27 @@ auc_rlr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$na
 auc_gammalr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 
 
+features_selected <- list() 
+
+
+
+run_FS <- function(x, y, method){
+  # method options are "ttest", "entropy", "bhattacharyya", "roc", "wilcoxon"
+  setVariable(matlab, x = x)
+  setVariable(matlab, y = y)
+  setVariable(matlab, method=method)
+  evaluate(matlab, "rfs = rankfeatures(x', y, 'Criterion', method);")
+  ranked_features <- getVariable(matlab, "rfs")[[1]]  
+  rownames(ranked_features) <- colnames(x)
+  return(ranked_features)
+}
+
+
+
+
+
+
+
 #
 # Run analysis with given parameters, track results
 #
@@ -103,7 +124,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
       #                 draw train/test sets which will remain the same for all iterations of flipping...seems OK to me)
       DIM = DIM_RANGE[dimr]  # n_features
       DS_SIZE = DS_SIZE_RANGE[dsize]
-      
+      #DIM = DIM_RANGE[1]
+      #DS_SIZE = DS_SIZE_RANGE[1]
       list_of_datasets <- list()
       for(x in rownames(parameters$datasets)){
         d <- parameters$datasets[x,]
@@ -113,6 +135,9 @@ for(dimr in seq(1:length(DIM_RANGE))){
         }else if(d$type == "geo"){
           list_of_datasets[[d$name]] <- feval('subset_geo', d$name, list_of_geo_datasets)
           logger.info(msg=paste("DATA - GEO - ", d$name, sep=""))
+        }else if(d$type == "sim"){
+          list_of_datasets[[d$name]] <- feval('simulate_data', d$base_dataset, d$n_samples)
+          logger.info(msg=paste("DATA - SIM - ", d$name, sep=""))
         }else{
           list_of_datasets[[d$name]] <- NULL
         }
@@ -122,6 +147,9 @@ for(dimr in seq(1:length(DIM_RANGE))){
         
         
         dataset <- list_of_datasets[[names(list_of_datasets)[d]]]
+        
+        features_selected[[names(list_of_datasets)[d]]] <- list("unflipped" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)),
+                                           "flipped" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)))
         
         
         for(j in seq(1:length(EXP_RANGE_J))){
@@ -152,6 +180,24 @@ for(dimr in seq(1:length(DIM_RANGE))){
             a = inject_label_noise(yt, flip_i, flip_j)
             yz = a[[1]]
             fdz = a[[2]]
+            
+            
+            # DO feature selection on the original dataset, save features for evaluation
+            rfs_unflipped <- run_FS(Xt, yt, "wilcoxon")
+            features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ] <- rfs_unflipped
+            # WHY WONT THIS WORK??? vvv
+            #names(features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ]) <- rownames(rfs_unflipped)
+            
+            # Do feature selection on the modified/flipped dataset, save features for evaluation
+            rfs_flipped <- run_FS(Xt, yz, "wilcoxon")
+            features_selected[[names(list_of_datasets)[d]]][["flipped"]][k,j,i, ] <- rfs_flipped
+            # WHY WONT THIS WORK??? vvv
+            #names(features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ]) <- rownames(rfs_flipped)
+            
+            
+            
+            
+            
             
             # create a new winit for training the noised model
             winit = randn(dim(Xt)[2] + 1, 1)
@@ -254,9 +300,6 @@ for(dimr in seq(1:length(DIM_RANGE))){
 }
 
 
-
-
-
 save_data(auc_lr, get_variable_name(auc_lr), EXPERIMENT_DIR)
 save_data(auc_rlr, get_variable_name(auc_rlr), EXPERIMENT_DIR)
 save_data(err_lr, get_variable_name(err_lr), EXPERIMENT_DIR)
@@ -271,35 +314,11 @@ my_palette <- colorRampPalette(c("purple3", "white"))(n = 1001)
 #my_palette3 <- colorRampPalette(c("blue", "white","red"))(n=100)
 my_palette2 <- colorRampPalette(c("white", "green4"))(n = 1001)    # continuous color scale for heatmaps
 discrete_pal <- brewer.pal(6, "Spectral")                          # color palette for discrete variables - line plots for different conditions
-# 
-# # THIS IS A HEATMAP PLOT
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
-# 
-# # THIS IS A HEATMAP PLOT
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file4", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data(list(lr = err_lr, rlr = err_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette)
-# 
-# # THIS IS A LINE PLOT
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file2", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
-# 
-# # THIS IS A LINE PLOT
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file5", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data(list(lr = err_lr, rlr = err_rlr, gammalr = err_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
-# 
-# 
-# # THIS IS A LINE PLOT
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = .1, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file3", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J,  colorpal = discrete_pal, color_by_pval = TRUE)
-# # THIS IS A LINE PLOT
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "EXP_RANGE" = .1, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file6", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data(list(lr = err_lr, rlr = err_rlr, gammalr = err_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, EXP_RANGE, EXP_RANGE_J,  colorpal = discrete_pal, color_by_pval = TRUE)
 
 close(matlab)
 
 # THIS IS A HEATMAP PLOT
-plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data2", "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
+plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "simulate_mbal", "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
 plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
 
 plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = NULL, "EXP_RANGE" = NULL, "EXP_RANGE_J" = .2, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
@@ -324,14 +343,24 @@ plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_ga
 # 
 
 
-## TESTING OUT WILCOX TEST FUNCTION
-# raw_data <- list()
-# result_arrays <- list(err_lr,err_rlr, err_gammalr)
-# for(i in seq(1:length(result_arrays))){
-#   a = lapply(seq(dim(result_arrays[[i]])[3]), function(x) result_arrays[[i]][index_1, index_2, x, index_4, index_5])  # get multiple iterations' worth at a contstant error rate (both I and J remain the same), but evaluate all DIM x all DS_SIZEs
-#   raw_data[[i]] <- do.call(rbind, a)
-# }
-# ew <- evaluate_wilcox(raw_data)
-# # if you have a matrix w that is the wilcox p-value results...
-# which(w<0.05,arr.ind = T) # gives you the index values that are significantly different
+
+plot_feature_similarity <- function(features_selected, i, j){
+  for(d in features_selected){
+    for(N in c(100, 500, 1000, 2500, 5000, 10000)){
+      jaccard <- c(); spearman <- c(); 
+      for(k in seq(1:dim(d$flipped)[1])){
+        jaccard <- c(jaccard, length( intersect( names(head(sort(d$flipped[k,j,i,]),n=N)), names(head(sort(d$unflipped[k,j,i,]),n=N))) ) / N)
+        spearman <- c(spearman, cor(d$flipped[k,j,i,], d$unflipped[k,j,i,], method="spearman"))
+      }
+      print(mean(jaccard))
+      print(std(jaccard))
+    }
+    print(mean(spearman))
+  }
+}
+
+
+
+
+plot_feature_similarity(features_selected, 4, 2)
 

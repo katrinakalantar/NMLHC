@@ -199,11 +199,12 @@ for(i in seq(1:max_iter)){
   #u[[i + 1]] <- as.matrix(model$beta)  # NOTE: SHOULD GET LAMBDA PARAM BY CROSS-VALIDATION, set to 0.0004 for now (randomly)
   
   # second attempted method using the cv.glmnet function to auto-select lambda
-  cvfit = cv.glmnet(t(pseudo_dataset), as.factor(pseudo_labels), family = "binomial", weights = as.numeric(weights_f), alpha = 1, intercept = FALSE)
-  u[[i + 1]] <- as.matrix(coef(cvfit, s = "lambda.min"))[2:(dim(Xt)[1] + 1),]
+  cvfit = cv.glmnet(t(pseudo_dataset), as.factor(pseudo_labels), family = "binomial", 
+                    weights = as.numeric(weights_f), alpha = 1, intercept = FALSE)
+  u[[i + 1]] <- as.matrix(coef(cvfit, s = "lambda.min"))[2:(dim(Xt)[1] + 1),]                               # remove the "intercept" term from the result because we aren't fitting this value anyway
   #u_better[[i]] <- compute_Eu(sigma[[i]], B[[i]], u[[i + 1]]) - compute_Eu(sigma[[i]], B[[i]], u[[i]])     # computing u with original sigma/Beta values
-  s <- sigmoid(t(u[[i + 1]]) %*% Xt)       # recompute sigma for use in new E_u 
-  b <- compute_B(s, zmat[[i+1]], Ytf)      # recompute b for use in new E_u
+  s <- sigmoid(t(u[[i + 1]]) %*% Xt)                                                                        # recompute sigma for use in new E_u 
+  b <- compute_B(s, zmat[[i+1]], Ytf)                                                                       # recompute b for use in new E_u
   u_better[[i]] <- compute_Eu(s, b, u[[i + 1]]) - compute_Eu(sigma[[i]], B[[i]], u[[i]])
   
    
@@ -211,7 +212,8 @@ for(i in seq(1:max_iter)){
 
 
 # if z and u are returning better results at each iteration, the values of z_better and u_better 
-# ( the difference between Expected Values at each iteration) should always be positive.
+# (the difference between Expected Values at each iteration) should always be positive.
+# compute the percentage of iterations where the update incrases Expected Value
 print("z_better")
 unlist(z_better)
 sum(unlist(z_better) >= 0)/length(unlist(z_better))
@@ -220,7 +222,7 @@ unlist(u_better)
 sum(unlist(u_better) >= 0)/length(unlist(u_better))
 
 
-# plots should show E_u and E_z per iteration
+# plots should show E_u and E_z per iteration - this DOES NOT necessarily increase each iteration - which is OK
 par(mfrow=c(1,2))
 plot(unlist(E_u), main = "E_u")
 plot(unlist(E_z), main = "E_z")

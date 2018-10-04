@@ -178,7 +178,7 @@ for l=1:options.maxIter
     end
     
     t  = x * w;
-    size(t)
+    %size(t)
     
     s0    = (g(1,1) * (1 ./ ((1 ./ exp(-t))+1))) + (g(2,1) ./ (1+exp(-t)));
     s1    = (g(1,2) * (1 ./ ((1 ./ exp(-t))+1))) + (g(2,2) ./ (1+exp(-t)));
@@ -190,15 +190,15 @@ for l=1:options.maxIter
     
     [regV void] = feval(options.regFunc, w, options.sn);
     
-    "s1"
-    size(s1)
-    "y"
-    size(y)
+    %"s1"
+    %size(s1)
+    %"y"
+    %size(y)
     
     llh(l) = -sum((y .* log(s1)) + ((1 - y).* log(s0)),1) + sum(lambda .* regV);
             
-    "llh"
-    llh
+    %"llh"
+    %llh
 end
 
 if options.verbose

@@ -22,13 +22,13 @@ clear all;
 close all;
 
 % global options
-ITER            = 5; %10;%10; 
+ITER            = 2; %10;%10; 
 options.maxIter = 100;
 
 % parameters iterated
 %EXP_RANGE       = [0, .01, .025, .05, .1, .15, .2, .3, .4, .5]; %y-axis of heatmap
 %EXP_RANGE_J     = [0, .01, .025, .05, .1, .15, .2, .3, .4, .5];  % x-axis of heatmap
-EXP_RANGE       = [0, .05, .1, .15, .2, .25, .3];%, .05, .1, .15, .2, .3, .4, .5]; %y-axis of heatmap.025, 
+EXP_RANGE       = [0, .1, .2,  .3];%, .05, .1, .15, .2, .3, .4, .5]; %y-axis of heatmap.025, 
 EXP_RANGE_J     = [0];%, .05, .1, .15, .2, .25, .3];%, .05, .1, .15, .2, .3, .4, .5];  % x-axis of heatmap
 
 CLS             = 2;    % number of classes
@@ -53,7 +53,7 @@ es_lr_nonoise_auc = nan(length(EXP_RANGE), length(EXP_RANGE_J), ITER);
 
 index = 0;
 use_PCs = false;
-feature_select = false; %true;
+feature_select = true;
 n_features = 2000;
 
 % %%% LOAD BIOLOGY DATA
@@ -68,7 +68,6 @@ n_features = 2000;
 % dsxp_var = dsxp(:,var(dsxp) > 6000);
 % dataset_x = dsxp_var';
 % %%%
-
 
 %%% LOAD BIOLOGY DATA
 gseData = geoseriesread('/Users/kkalantar/Documents/Research/NMLHC/Exp1_HostBenchmark/data/GSE33341-GPL1261_series_matrix.txt');
@@ -104,6 +103,12 @@ for i = 1:length(EXP_RANGE)
         
         flip_j = EXP_RANGE_J(j);
         index = index + 1;
+        
+        "flip_i"
+        flip_i
+        
+        "flip_j"
+        flip_j
         
         for k = 1:ITER
             
@@ -153,7 +158,7 @@ for i = 1:length(EXP_RANGE)
             [~,~,~,AUC] = perfcurve(ys,addbias(Xs(:,idx2(1:n_features)))*w_nonoise,2);
             es_lr_nonoise_auc(i,j,k) = AUC;
 
-            size(Xt)
+            %size(Xt)
             sum(abs(w_nonoise) < 1e-6)/length(w_nonoise)
 
             
@@ -167,6 +172,7 @@ for i = 1:length(EXP_RANGE)
                     overlap = intersect(idx(1:feature_lengths(fl)), idx2(1:feature_lengths(fl)));
                     which_length(fl) = length(overlap) / feature_lengths(fl);
                 end
+                "which_length:"
                 which_length
                 Xt = Xt(:,idx(1:n_features)); % select top n_features features 
                 Xs = Xs(:,idx(1:n_features)); % select top n_features features  
