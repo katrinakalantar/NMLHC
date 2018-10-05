@@ -94,30 +94,6 @@ features_selected <- list()
 
 
 
-run_FS <- function(x, y, method){
-  # method options are "ttest", "entropy", "bhattacharyya", "roc", "wilcoxon"
-  setVariable(matlab, x = x)
-  setVariable(matlab, y = y)
-  setVariable(matlab, method=method)
-  evaluate(matlab, "[idx, z] = rankfeatures(x', y, 'Criterion', method);")
-  
-  feature_values <- getVariable(matlab, "z")[[1]]
-  rownames(feature_values) <- colnames(x)
-  
-  
-  print(head(feature_values))
-  ranks <- getVariable(matlab, "idx")[[1]]  
-  
-  result <- as.matrix(feature_values[colnames(x)[ranks],])
-  
-  return(result)
-}
-
-
-
-
-
-
 
 #
 # Run analysis with given parameters, track results
@@ -153,11 +129,11 @@ for(dimr in seq(1:length(DIM_RANGE))){
       
       for(d in seq(1:length(list_of_datasets))){
         
-        
         dataset <- list_of_datasets[[names(list_of_datasets)[d]]]
         
         features_selected[[names(list_of_datasets)[d]]] <- list("unflipped" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)),
-                                           "flipped" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)))
+                                           "flipped_wilcox" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)),
+                                           "flipped_ttest" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)))
         
         
         for(j in seq(1:length(EXP_RANGE_J))){
@@ -181,31 +157,35 @@ for(dimr in seq(1:length(DIM_RANGE))){
             Xs = dataset$xx
             ys = dataset$tt
             
-            a = standardiseR(Xt, Xs)
+            #a = standardiseR(Xt, Xs)
+            #Xtold = a[[1]]
+            #Xsold = a[[2]]
+            a = standardise(Xt, Xs)
             Xt = a[[1]]
             Xs = a[[2]]
+            colnames(Xt) <- colnames(dataset$x)   # must have labels for the features_selection() function to work properly
+            colnames(Xs) <- colnames(dataset$xx)
+            rownames(Xt) <- rownames(dataset$x)
+            rownames(Xs) <- rownames(dataset$xx)
+            
             
             a = inject_label_noise(yt, flip_i, flip_j)
             yz = a[[1]]
             fdz = a[[2]]
             
+            logger.info(msg = head(colMeans(Xt) < .0001))
+            print(head(colMeans(Xt) < .0001))
+            print(head(rowMeans(Xt)) < .05)
+            logger.info(msg = head(rowMeans(Xt)) < .05)
             
             # DO feature selection on the original dataset, save features for evaluation
             rfs_unflipped <- run_FS(Xt, yt, "wilcoxon")
             features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ] <- rownames(rfs_unflipped)
-            # WHY WONT THIS WORK??? vvv
-            #names(features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ]) <- rownames(rfs_unflipped)
-            
             # Do feature selection on the modified/flipped dataset, save features for evaluation
             rfs_flipped <- run_FS(Xt, yz, "wilcoxon")
-            features_selected[[names(list_of_datasets)[d]]][["flipped"]][k,j,i, ] <- rownames(rfs_flipped)
-            # WHY WONT THIS WORK??? vvv
-            #names(features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ]) <- rownames(rfs_flipped)
-            
-            
-            
-            
-            
+            features_selected[[names(list_of_datasets)[d]]][["flipped_wilcox"]][k,j,i, ] <- rownames(rfs_flipped)
+            rfs_flipped_ttest <- run_FS(Xt, yz, "ttest")  
+            features_selected[[names(list_of_datasets)[d]]][["flipped_ttest"]][k,j,i, ] <- rownames(rfs_flipped_ttest)
             
             # create a new winit for training the noised model
             winit = randn(dim(Xt)[2] + 1, 1)
@@ -236,10 +216,11 @@ for(dimr in seq(1:length(DIM_RANGE))){
             # result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys) # this was the original fn
             result <- NULL
             
-            try(
-              #logger.info(msg = paste("failed function repeating function: ", attempt, sep = ""))
-              result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
-            )
+            result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
+            #try(
+            #  #logger.info(msg = paste("failed function repeating function: ", attempt, sep = ""))
+            #  result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
+            #)
             
             #attempt <- 0
             #while(is.null(result) && attempt <= 3){
@@ -286,7 +267,6 @@ for(dimr in seq(1:length(DIM_RANGE))){
             
             
             
-            
             # # run standard LASSO regression
             # # with true labels
             # model <- glmnet(Xt, as.numeric(yt), family="binomial", alpha = 1) 
@@ -297,11 +277,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
             
             
             
-            
           }
         }
-        
-         
       }
     }
   }
@@ -352,23 +329,9 @@ plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_ga
 
 
 
-plot_feature_similarity <- function(features_selected, i, j){
-  for(d in features_selected){
-    for(N in c(100, 500, 1000, 2500, 5000, 10000)){
-      jaccard <- c(); spearman <- c(); 
-      for(k in seq(1:dim(d$flipped)[1])){
-        jaccard <- c(jaccard, length( intersect( names(head(sort(d$flipped[k,j,i,]),n=N)), names(head(sort(d$unflipped[k,j,i,]),n=N))) ) / N)
-        spearman <- c(spearman, cor(d$flipped[k,j,i,], d$unflipped[k,j,i,], method="spearman"))
-      }
-      print(mean(jaccard))
-      print(std(jaccard))
-    }
-    print(mean(spearman))
-  }
-}
+# length(intersect(rownames(head(rfs_flipped$res, n=1000)),rownames(head(rfs_unflipped$res, n=1000))))/1000
+# length(intersect(rownames(head(rfs_unflipped$res, n=1000)),union( rownames(head(rfs_flipped_ttest$res, n=1000)),rownames(head(rfs_flipped_roc$res, n=1000)))))/1000
+# length(union(rownames(head(rfs_flipped_ttest$res, n=1000)),rownames(head(rfs_flipped_roc$res, n=1000))))
 
-
-
-
-plot_feature_similarity(features_selected, 4, 2)
+overlap <- plot_feature_similarity(features_selected, c(100, 500, 1000, 2500, 5000, 10000))#, "fileroot" = paste(EXPERIMENT_DIR, "features_byflip", sep=""))
 

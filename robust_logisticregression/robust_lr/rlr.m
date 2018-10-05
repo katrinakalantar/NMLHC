@@ -112,6 +112,7 @@ for l=1:options.maxIter
     
     %% updating the gamma matrix
     if options.estG %&& l < 5
+        "estimating G"
         for gg=1:1
         % using multiplicative update
         s0  = (g(1,1) * (1 ./ ((1 ./ exp(-t))+1))) + (g(2,1) ./ (1+exp(-t)));

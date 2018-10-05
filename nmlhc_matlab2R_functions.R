@@ -1,4 +1,65 @@
 
+run_FS <- function(x, y, method){
+  # method options are "ttest", "entropy", "bhattacharyya", "roc", "wilcoxon"
+  setVariable(matlab, x = x)
+  setVariable(matlab, y = y)
+  setVariable(matlab, method=method)
+  evaluate(matlab, "[idx, z] = rankfeatures(x', y, 'Criterion', method);")
+  feature_values <- getVariable(matlab, "z")[[1]]
+  rownames(feature_values) <- colnames(x)
+  ranks <- getVariable(matlab, "idx")[[1]]  
+  result <- as.matrix(feature_values[colnames(x)[ranks],])
+  return(result)
+}
+
+plot_feature_similarity <- function(features_selected, check_values, fileroot = NULL){
+  for(d in features_selected){
+    dims = dim(d$unflipped)
+    discrete_pal2 <- colorRampPalette(c("white", "dodgerblue4"))(n = dims[2] * dims[3])
+    
+    overlap_mat <- array(rep(length(check_values) * 0,dims[2] * dims[3]), c(length(check_values), dims[2], dims[3]))
+    for(j in seq(1:dims[2])){
+      for(i in seq(1:dims[3])){
+        mean_jaccard <- c()
+        for(N in seq(1:length(check_values))){
+          jaccard <- c();
+          for(k in seq(1:dim(d$flipped_wilcox)[1])){
+            jaccard <- c(jaccard, length( intersect( head(d$unflipped[1,j,i,], n = check_values[N]), 
+                                                     head(d$flipped_wilcox[1,j,i,], n = check_values[N]) )) / check_values[N])
+          }
+          print(mean(jaccard))
+          mean_jaccard <- c(mean_jaccard, jaccard) 
+          overlap_mat[N, j, i] <- mean(jaccard)
+        }
+      }
+    }
+  }
+  
+  if(!is.null(fileroot)){
+    pdf(paste(fileroot, ".pdf", sep=""), height = 6, width= 6)
+  }
+  
+  plot(overlap[,1,1], ylim = c(0,1), col="black", lwd = 4, cex= 2, xlim = c(-1,length(overlap[,1,1])+2),
+       ylab = "% feature overlap - Jaccard Similarity",xaxt = "n", xlab = "overlap considered for top N features")
+  axis(1, at = 1:length(overlap[,1,1]), labels = check_values)
+  cnt = 0
+  for(i in seq(1:dims[3])){
+    for(j in seq(1:dims[2])){
+      cnt = cnt + 1
+      points(overlap[,j,i], col = alpha(discrete_pal2[cnt],.8), pch= 16, cex = 2)
+      points(overlap[,j,i], col = alpha(discrete_pal2[cnt],1), cex = 2)
+      lines(overlap[,j,i], col = alpha(discrete_pal2[cnt],1), cex = 2)
+      text(length(overlap[,j,i]) + 1, overlap[,j,i][length(overlap[,j,i])], paste(c("i: ", EXP_RANGE[i], " j: ",EXP_RANGE_J[j], ", ", overlap[,j,i][length(overlap[,j,i])] * 100, "%"),collapse=""), cex = .5)
+      text(0, overlap[,j,i][1], paste(c("i: ", EXP_RANGE[i], " j: ",EXP_RANGE_J[j], ", ", overlap[,j,i][1] * 100, "%"),collapse=""), cex = .5)
+    }
+  }
+  if(!is.null(fileroot)){
+    dev.off()
+  }
+  return(overlap_mat)
+}
+
+
 simulate_data <- function(original_dataset_name, n_samples ){
   training_dataset_normalized <- NULL
   test_dataset_normalized <- NULL
@@ -19,8 +80,8 @@ simulate_data <- function(original_dataset_name, n_samples ){
     test_dataset_normalized <- make_sim_eset(t(t(test_dataset)/colSums(test_dataset)))
   }
   
-  return(list("x" = t(as.matrix(exprs(training_dataset_normalized))), "y" = as.matrix(as.numeric(training_dataset_normalized$classification)), "ff" = as.matrix(rep(0, length(training_dataset_normalized$classification))),
-              "xx" = t(as.matrix(exprs(test_dataset_normalized))), "tt" = as.matrix(as.numeric(test_dataset_normalized$classification)), "dd" = as.matrix(rep(0, length(test_dataset_normalized$classification)))))
+  return(list("x" = t(as.matrix(exprs(training_dataset_normalized))), "y" = as.matrix(as.numeric(training_dataset_normalized$classification == 1) + 1), "ff" = as.matrix(rep(0, length(training_dataset_normalized$classification))),
+              "xx" = t(as.matrix(exprs(test_dataset_normalized))), "tt" = as.matrix(as.numeric(test_dataset_normalized$classification == 1) + 1), "dd" = as.matrix(rep(0, length(test_dataset_normalized$classification)))))
 }
 
 
@@ -96,9 +157,11 @@ subset_known_dataset <- function(geo_data, pos_regex, neg_regex){
   
   true_labels_train <- rep(0, length(full_train$source_name_ch1))
   true_labels_train[grep(pos_regex, full_train$source_name_ch1)] <- 1
+  true_labels_train <- true_labels_train + 1
   
   true_labels_test <- rep(0, length(full_test$source_name_ch1))
   true_labels_test[grep(pos_regex, full_test$source_name_ch1)] <- 1
+  true_labels_test <- true_labels_test + 1
   
   return(list("x" = t(as.matrix(full_train)), "y" = as.matrix(true_labels_train), "ff" = as.matrix(rep(0, length(true_labels_train))),
               "xx" = t(as.matrix(full_test)), "tt" = as.matrix(true_labels_test), "dd" = as.matrix(rep(0, length(true_labels_test)))))
@@ -432,6 +495,21 @@ create_new_result_set <- function(DIM_RANGE, DS_SIZE_RANGE, DATASETS, EXP_RANGE_
   return(result_array)
 }
 
+
+create_new_result_set_learning_curve <- function(DATASETS, learning_curve_iters){
+  logger.info(msg="FUNCTION - STATUS - create_new_result_set()")
+  result_array <- array(
+    rep(0, length(DATASETS) * ITER * length(learning_curve_iters)),
+    dim = c(length(DATASETS), ITER, length(learning_curve_iters)),
+    dimnames = list(
+      paste("DATASETS", DATASETS, sep=("_")),
+      paste("ITER", seq(1:ITER), sep=("_")),
+      paste("LC", learning_curve_iters, sep=("_"))
+    )
+  )
+  return(result_array)
+}
+
 create_new_feature_set <- function(EXP_RANGE_J, EXP_RANGE, features){
   logger.info(msg="FUNCTION - STATUS - create_new_feature_set()")
   result_array <- array(
@@ -540,7 +618,7 @@ run_rlr <- function(method, winit, ginit, train_data, train_labels, options, tes
   llh = getVariable(matlab, "llh")[[1]]
   
   auc = roc(as.numeric(test_labels), as.numeric(addbias(test_data) %*% w), ci = TRUE)
-  error = get_error(w, Xs, ys) 
+  error = get_error(w, test_data, test_labels) 
   
   
   return( list( w = w,
@@ -604,6 +682,18 @@ inject_label_noise <- function(yt, flip_i, flip_j){
   
   return(list(yz = getVariable(matlab, "yz")[[1]],
               fdz = getVariable(matlab, "fdz")[[1]]))
+}
+
+
+standardise <- function(Xt, Xs){
+  
+  setVariable(matlab, Xt = Xt)
+  setVariable(matlab, Xs = Xs)
+  
+  evaluate(matlab, "[Xt, Xs] = standardise(Xt,Xs);")
+  
+  return(list(Xt = getVariable(matlab, "Xt")[[1]],
+              Xs = getVariable(matlab, "Xs")[[1]]))
 }
 
 
