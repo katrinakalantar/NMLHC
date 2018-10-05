@@ -99,10 +99,18 @@ run_FS <- function(x, y, method){
   setVariable(matlab, x = x)
   setVariable(matlab, y = y)
   setVariable(matlab, method=method)
-  evaluate(matlab, "rfs = rankfeatures(x', y, 'Criterion', method);")
-  ranked_features <- getVariable(matlab, "rfs")[[1]]  
-  rownames(ranked_features) <- colnames(x)
-  return(ranked_features)
+  evaluate(matlab, "[idx, z] = rankfeatures(x', y, 'Criterion', method);")
+  
+  feature_values <- getVariable(matlab, "z")[[1]]
+  rownames(feature_values) <- colnames(x)
+  
+  
+  print(head(feature_values))
+  ranks <- getVariable(matlab, "idx")[[1]]  
+  
+  result <- as.matrix(feature_values[colnames(x)[ranks],])
+  
+  return(result)
 }
 
 
@@ -184,13 +192,13 @@ for(dimr in seq(1:length(DIM_RANGE))){
             
             # DO feature selection on the original dataset, save features for evaluation
             rfs_unflipped <- run_FS(Xt, yt, "wilcoxon")
-            features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ] <- rfs_unflipped
+            features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ] <- rownames(rfs_unflipped)
             # WHY WONT THIS WORK??? vvv
             #names(features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ]) <- rownames(rfs_unflipped)
             
             # Do feature selection on the modified/flipped dataset, save features for evaluation
             rfs_flipped <- run_FS(Xt, yz, "wilcoxon")
-            features_selected[[names(list_of_datasets)[d]]][["flipped"]][k,j,i, ] <- rfs_flipped
+            features_selected[[names(list_of_datasets)[d]]][["flipped"]][k,j,i, ] <- rownames(rfs_flipped)
             # WHY WONT THIS WORK??? vvv
             #names(features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ]) <- rownames(rfs_flipped)
             

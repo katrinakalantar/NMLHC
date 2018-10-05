@@ -441,7 +441,7 @@ create_new_feature_set <- function(EXP_RANGE_J, EXP_RANGE, features){
       paste("ITER", seq(1:ITER), sep=("_")),
       paste("J_FLIP", EXP_RANGE_J, sep=("_")),
       paste("I_FLIP", EXP_RANGE, sep=("_")),
-      paste(features)
+      paste("ft", seq(1:length(features)), sep=("_"))
     )
   )
   return(result_array)
