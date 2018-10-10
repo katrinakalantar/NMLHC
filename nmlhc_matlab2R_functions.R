@@ -1,4 +1,45 @@
 
+plot_multiple_learning_curves <- function(list_of_LCs, colors_to_use, learning_curve_iters, significance_level = .05, plot_all_points = TRUE, plot_error_bars = FALSE){
+  index <- 1
+  for(LC in list_of_LCs){
+    
+    if(index == 1){
+      plot(colMeans(LC[1,1:2,]), pch = 16, col = colors_to_use[index], ylim = c(0,1), xlim = c(-5, 20), main = "Learning Curve", 
+           ylab = "AUC", cex = 1.5, xaxt="n")
+      axis(1, at = 1:length(learning_curve_iters), labels = learning_curve_iters)
+    }else{
+      points(colMeans(LC[1,1:2,]), pch = 16, col = colors_to_use[index], cex = 1.5)
+    }
+    
+    lines(colMeans(LC[1,1:2,]), pch = 16, col = colors_to_use[index])
+    text(-3, colMeans(LC[1,1:2,])[1], names(list_of_LCs)[index], cex=.8, col = colors_to_use[index])
+    
+    if(plot_error_bars){
+      sd <- apply(LC[1,,], 2, sd)
+      arrows(seq(1:length(learning_curve_iters)), colMeans(LC[1,1:2,]) - sd, seq(1:length(learning_curve_iters)), colMeans(auc_full_filt[1,1:2,]) + sd, length=0.05, angle=90, code=3, col="gray28")
+    }
+    if(plot_all_points){
+      matplot(t(LC[1,,]),type="p", pch=16, col=alpha(colors_to_use[index],.4), add = TRUE, jitter=1)
+    }
+    index <- index + 1 
+  }
+  
+  if(length(list_of_LCs) == 2){
+    significance <- unlist(lapply(seq(1:length(list_of_LCs[[1]][1,,1])), function(x){return(wilcox.test(list_of_LCs[[1]][1,,x], list_of_LCs[[2]][1,,x])$p.value)}))
+    points(seq(1:length(significance)), as.integer(significance < significance_level)*.1, pch = 8, col=c("white","black")[as.integer(significance < significance_level)+1])
+    text(-3, .1, paste("p <",significance_level), cex = .8, col = "black")
+  }
+}
+
+
+#' Run feature selection
+#' 
+#' @param x training data; matrix of features/covariates used for prediction.
+#' @param y training labels.
+#' @param method The feature selection method used to rank features, per rankfeatures() documentation in matlab (options: "ttest", "entropy", "bhattacharyya", "roc", "wilcoxon")
+#' @return The sorted matrix of features.
+#' @examples
+#' run_FS(x, y, "wilcoxon")
 run_FS <- function(x, y, method){
   # method options are "ttest", "entropy", "bhattacharyya", "roc", "wilcoxon"
   setVariable(matlab, x = x)
@@ -12,6 +53,15 @@ run_FS <- function(x, y, method){
   return(result)
 }
 
+
+#' Plot the jaccard similarity (percentage of overlapping features) for models built using data with and without mislabelled samples
+#' 
+#' @param features_selected A list containing the features selected at each iteration - contains list entries for "unflipped" and "flipped_wilcox".
+#' @param check_values Vector containing integers specifying the top N genes that should be checked for overlap percentage between flipped and unflipped.
+#' @param fileroot Optional parameter specifying the file name to be used for saving .pdf version of the plot.
+#' @return The matrix of overlap percentages computed at each check_value(s)
+#' @examples
+#' overlap <- plot_feature_similarity(features_selected, c(100, 500, 1000, 2500, 5000, 10000))#, "fileroot" = paste(EXPERIMENT_DIR, "features_byflip", sep=""))
 plot_feature_similarity <- function(features_selected, check_values, fileroot = NULL){
   for(d in features_selected){
     dims = dim(d$unflipped)
@@ -60,6 +110,13 @@ plot_feature_similarity <- function(features_selected, check_values, fileroot = 
 }
 
 
+#' Simulate data from a known dataset (using SimSeq package)
+#' 
+#' @param original_dataset_name the string identifier for the pre-existing dataset from which data should be sampled. Note: only particular datasets are available/pre-programmed for this method, so string names must match one of the following: "mBAL"
+#' @param n_samples the number of iterations of re-sampling to perform; SimSeq will only sample the number of samples in each class of the training dataset, but to increase total samples size, we can iterate running SimSeq.
+#' @return A list containing {"x": training data, "y": training class ID, "ff": zeros, "xx": test data, "tt": test class ID, "dd": zeros}.
+#' @examples
+#' simulate_data("mBAL", 15)
 simulate_data <- function(original_dataset_name, n_samples ){
   training_dataset_normalized <- NULL
   test_dataset_normalized <- NULL
@@ -86,7 +143,15 @@ simulate_data <- function(original_dataset_name, n_samples ){
 
 
 
-
+#' Function called by simulated_data to run SimSeq
+#' 
+#' @param negative_reference_data ExpressionSet object corresponding to the positive class data.
+#' @param positive_reference_data ExpressionSet object corresponding to thenegative class data.
+#' @param n The number of iterations of SimSeq sampling to perform.
+#' @param DEgenes A list of genes passed to SimSeq which should be differentially expressed in the simulated data.
+#' @return An ExpressionSet object containing simulated positive and negative samples, with metadata column "classification" indicating which group they belong to.
+#' @examples
+#' generate_simulated_data(training_set[,training_set$effective_group == 4], training_set[,training_set$effective_group == 1], 15, DEgenes)
 generate_simulated_data <- function(negative_reference_data, positive_reference_data, n = 5, DEgenes){
   new_negatives <- c()
   new_positives <- c()
@@ -109,7 +174,7 @@ generate_simulated_data <- function(negative_reference_data, positive_reference_
       new_positives <- sd2$counts[,(min_dim + 1):(min_dim*2)]
     }else{
       new_negatives <- cbind(new_negatives, sd1$counts[,1:min_dim] )
-      new_positives <- cbind(new_positives,sd2$counts[,(min_dim + 1):(min_dim*2)])    
+      new_positives <- cbind(new_positives, sd2$counts[,(min_dim + 1):(min_dim*2)])    
     }
   }
   
@@ -118,6 +183,13 @@ generate_simulated_data <- function(negative_reference_data, positive_reference_
   return(return_dataset)
 }
 
+
+#' Convert matrix of counts with column names to an ExpressionSet with metadata
+#' 
+#' @param input_data matrix of simulated gene counts, with columns containing next describing which group they came from.
+#' @return An ExpressionSet object containing simulated positive and negative samples, with metadata column "classification" indicating which group they belong to.
+#' @examples
+#' make_sim_eset(test_data)
 make_sim_eset <- function(input_data){
   pd <- cbind(as.integer(grepl("Group1", colnames(input_data))), rep("sim", length(colnames(input_data))))
   rownames(pd) <- colnames(input_data)
@@ -126,13 +198,12 @@ make_sim_eset <- function(input_data){
 }
 
 
-
-
-
-
-
-#possibly_run_rlr <- possibly(run_rlr, otherwise = NA)
-
+#' Split matrix of counts into a training and a test set
+#' 
+#' @param input The matrix of counts to be divided into a training and test set
+#' @return List containing "training_set" and "test_set" entries, each a matrix of counts. Training set is 80% of the dataset, test set is 20%.
+#' @examples
+#' split_train_test(input)
 split_train_test <- function(input){
   print("inside split_train_test()")
   s <- shuffle(seq(1:dim(input)[2]))
@@ -141,6 +212,15 @@ split_train_test <- function(input){
   return(list("training_set" = training_set, "test_set" = test_set))
 }
 
+
+#' Subset a known dataset from GEO into training and test set.
+#' 
+#' @param geo_data The geo series object to be split
+#' @param pos_regex A regex that can be queried to identify "positive" samples in the GEO series object
+#' @param neg_regex A regex that can be queried to identify "negative" samples in the GEO series object
+#' @return A list containing {"x": training data, "y": training class ID, "ff": zeros, "xx": test data, "tt": test class ID, "dd": zeros}.
+#' @examples
+#' subset_known_dataset(geo_data, "BACTERIA", "VIRUS")
 subset_known_dataset <- function(geo_data, pos_regex, neg_regex){
   print("inside subset_known_dataset()")
   
@@ -616,8 +696,14 @@ run_rlr <- function(method, winit, ginit, train_data, train_labels, options, tes
   w = getVariable(matlab, "w")[[1]]
   g = getVariable(matlab, "g")[[1]]
   llh = getVariable(matlab, "llh")[[1]]
+
+  auc = try(roc(as.numeric(test_labels), as.numeric(addbias(test_data) %*% w))) 
+  if(class(auc) == "try-error"){
+    auc = list(auc=0)
+  }
   
-  auc = roc(as.numeric(test_labels), as.numeric(addbias(test_data) %*% w), ci = TRUE)
+  logger.info(paste("AUC:", auc$auc))
+  
   error = get_error(w, test_data, test_labels) 
   
   
