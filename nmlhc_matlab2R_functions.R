@@ -219,14 +219,15 @@ split_train_test <- function(input){
 #' @param geo_data The geo series object to be split
 #' @param pos_regex A regex that can be queried to identify "positive" samples in the GEO series object
 #' @param neg_regex A regex that can be queried to identify "negative" samples in the GEO series object
+#' @param source_variable The geo field containing the factor of interest
 #' @return A list containing {"x": training data, "y": training class ID, "ff": zeros, "xx": test data, "tt": test class ID, "dd": zeros}.
 #' @examples
-#' subset_known_dataset(geo_data, "BACTERIA", "VIRUS")
-subset_known_dataset <- function(geo_data, pos_regex, neg_regex){
+#' subset_known_dataset(geo_data, "BACTERIA", "VIRUS", "characteristics_ch1.2")
+subset_known_dataset <- function(geo_data, pos_regex, neg_regex, source_variable){
   print("inside subset_known_dataset()")
   
-  pos_split <- split_train_test(geo_data[, grep(pos_regex, geo_data$source_name_ch1)])
-  neg_split <- split_train_test( geo_data[, grep(neg_regex, geo_data$source_name_ch1)])
+  pos_split <- split_train_test(geo_data[, grep(pos_regex, pData(geo_data)[,source_variable])])
+  neg_split <- split_train_test( geo_data[, grep(neg_regex, pData(geo_data)[,source_variable])])
   
   print(dim(pos_split$training_set))
   print(dim(neg_split$training_set))
@@ -236,12 +237,12 @@ subset_known_dataset <- function(geo_data, pos_regex, neg_regex){
   full_train <- Biobase::combine(pos_split$training_set, neg_split$training_set)
   full_test <- Biobase::combine(pos_split$test_set, neg_split$test_set)
   
-  true_labels_train <- rep(0, length(full_train$source_name_ch1))
-  true_labels_train[grep(pos_regex, full_train$source_name_ch1)] <- 1
+  true_labels_train <- rep(0, length(pData(full_train)[,source_variable]))
+  true_labels_train[grep(pos_regex, pData(full_train)[,source_variable])] <- 1
   true_labels_train <- true_labels_train + 1
   
-  true_labels_test <- rep(0, length(full_test$source_name_ch1))
-  true_labels_test[grep(pos_regex, full_test$source_name_ch1)] <- 1
+  true_labels_test <- rep(0, length(pData(full_test)[,source_variable]))
+  true_labels_test[grep(pos_regex, pData(full_test)[,source_variable])] <- 1
   true_labels_test <- true_labels_test + 1
   
   return(list("x" = t(as.matrix(full_train)), "y" = as.matrix(true_labels_train), "ff" = as.matrix(rep(0, length(true_labels_train))),
