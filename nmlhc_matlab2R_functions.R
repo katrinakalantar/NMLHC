@@ -720,12 +720,12 @@ run_rlr <- function(method, winit, ginit, train_data, train_labels, options, tes
 
 
 
-subset_geo <- function(geo_dataset_name, geo_dataset_list){
+subset_geo <- function(geo_dataset_name, geo_dataset_list, source_variable){
   split <- strsplit(geo_dataset_name, "_")
   print(split)
   pos_regex <- split[[1]][1]
   neg_regex <- split[[1]][2]
-  return_value <- subset_known_dataset(geo_dataset_list[[geo_dataset_name]], pos_regex, neg_regex)
+  return_value <- subset_known_dataset(geo_dataset_list[[geo_dataset_name]], pos_regex, neg_regex, source_variable)
   return(return_value)
 }
 

@@ -70,7 +70,11 @@ list_of_geo_datasets <- list()
 for(dat in rownames(parameters$datasets)){
   d <- parameters$datasets[dat,]
   if(d$type == "geo"){
-    list_of_geo_datasets[[d$name]] <- GEOquery::getGEO(filename=d$series_filename)
+    if(grepl("series", d$series_filename)){
+      list_of_geo_datasets[[d$name]] <- GEOquery::getGEO(filename=d$series_filename)      
+    }else if(grepl("rds", d$series_filename)){
+      list_of_geo_datasets[[d$name]] <- readRDS(d$series_filename)
+    }
   }
 }
 
@@ -98,7 +102,7 @@ for(x in rownames(parameters$datasets)){
     list_of_datasets[[d$name]] <- feval("generate_data", as.numeric(CLS), as.numeric(DIM), as.numeric(DS_SIZE), 1000, as.numeric(d$class_sep), "gen")
     logger.info(msg=paste(c("DATA - GEN - ", "CLS: ", CLS, ", DIM: ", DIM, ", DS_SIZE: ", DS_SIZE, ", CLASS_SEP: ", d$class_sep), collapse=""))
   }else if(d$type == "geo"){
-    list_of_datasets[[d$name]] <- feval('subset_geo', d$name, list_of_geo_datasets)
+    list_of_datasets[[d$name]] <- feval('subset_geo', d$name, list_of_geo_datasets, d$source_variable)
     logger.info(msg=paste("DATA - GEO - ", d$name, sep=""))
   }else if(d$type == "sim"){
     list_of_datasets[[d$name]] <- feval('simulate_data', d$base_dataset, d$n_samples)

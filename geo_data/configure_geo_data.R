@@ -73,3 +73,13 @@ p <- prcomp(t(exprs(TBBLOOD_DATASET)))
 plot(p$x[,1],p$x[,2], col = colors[TBBLOOD_DATASET$characteristics_ch1.6] ,cex=1.2, lwd = 2, main = "TBBLOOD", xlab = "PC1",ylab = "PC2")
 
 saveRDS( TBBLOOD_DATASET, "TBBLOOD_DATASET.rds" )
+
+
+
+
+
+  
+
+#sub <- subset_known_dataset(ANCESTRY_DATASET, "Listeria", "Non-infected", "characteristics_ch1.2")
+
+
