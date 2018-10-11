@@ -1,4 +1,45 @@
 
+
+make_superlearner <- function(x, y, v, library){
+  
+  cv_sl = CV.SuperLearner(Y = y, X = x, family = binomial(), V = v,
+                          method = "method.AUC",
+                          SL.library =  library)
+  
+  # create the barplot of learners.
+  a <- summary(cv_sl)
+  aa <- a$Table
+  print(aa)
+  min_performance <- mean(aa$Ave) - 2*sd(aa[c(3:nrow(aa)),"Ave"])
+  max_performance <- mean(aa$Ave) + 2*sd(aa[c(3:nrow(aa)),"Ave"])
+  aa$col <- as.factor(aa$Ave > min_performance)
+  
+  p<-ggplot(data=aa, aes(x=Algorithm, y=Ave, fill = col )) + ylim(c(0,1)) +
+    geom_bar(stat="identity") + scale_fill_brewer(palette="Paired")  + theme_minimal() + ggtitle("AUC for Each SL") +
+    geom_abline(slope=0, intercept=0.5,  col = "red",lty=2) +
+    geom_abline(slope=0, intercept=min_performance,  col = "gold",lty=2) +
+    geom_abline(slope=0, intercept=mean(aa$Ave),  col = "gold",lty=1) +
+    geom_abline(slope=0, intercept=max_performance,  col = "gold",lty=2) 
+  print(p)
+  
+  individual_predictions <- cv_sl$library.predict
+  binary_predictions <- individual_predictions > .5
+  concordant <- binary_predictions == y
+  discordant <- binary_predictions != y
+  
+  barplot(table(rowSums(discordant)/ncol(discordant))) # here 1 is ConsensusFiltering, > .5 is Majority Filtering
+  abline(v = 2.5, col="red", lty=2)
+  
+  majority_filter <- rowSums(discordant)/ncol(discordant) > .5
+  consensus_filter <- rowSums(discordant)/ncol(discordant) == 1
+  
+  keep_majority_filter <- !majority_filter
+  keep_consensus_filter <- !consensus_filter
+  
+  return(list("MF" = keep_majority_filter, "CF" = keep_consensus_filter, "P" = p))
+}
+
+
 plot_multiple_learning_curves <- function(list_of_LCs, colors_to_use, learning_curve_iters, success, significance_level = .05, plot_all_points = TRUE, plot_error_bars = FALSE, title="Learning Curve"){
   index <- 1
   for(LC in list_of_LCs){
