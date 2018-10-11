@@ -1,31 +1,32 @@
 
-plot_multiple_learning_curves <- function(list_of_LCs, colors_to_use, learning_curve_iters, significance_level = .05, plot_all_points = TRUE, plot_error_bars = FALSE){
+plot_multiple_learning_curves <- function(list_of_LCs, colors_to_use, learning_curve_iters, success, significance_level = .05, plot_all_points = TRUE, plot_error_bars = FALSE, title="Learning Curve"){
   index <- 1
   for(LC in list_of_LCs){
     
     if(index == 1){
-      plot(colMeans(LC[1,1:2,]), pch = 16, col = colors_to_use[index], ylim = c(0,1), xlim = c(-5, 20), main = "Learning Curve", 
+      plot(colMeans(LC[1,success,]), pch = 16, col = colors_to_use[index], ylim = c(0,1), xlim = c(-5, 20), main = title, 
            ylab = "AUC", cex = 1.5, xaxt="n")
       axis(1, at = 1:length(learning_curve_iters), labels = learning_curve_iters)
     }else{
-      points(colMeans(LC[1,1:2,]), pch = 16, col = colors_to_use[index], cex = 1.5)
+      points(colMeans(LC[1,success,]), pch = 16, col = colors_to_use[index], cex = 1.5)
     }
     
-    lines(colMeans(LC[1,1:2,]), pch = 16, col = colors_to_use[index])
-    text(-3, colMeans(LC[1,1:2,])[1], names(list_of_LCs)[index], cex=.8, col = colors_to_use[index])
+    lines(colMeans(LC[1,success,]), pch = 16, col = colors_to_use[index])
+    text(-3, colMeans(LC[1,success,])[1], names(list_of_LCs)[index], cex=.8, col = colors_to_use[index])
     
     if(plot_error_bars){
-      sd <- apply(LC[1,,], 2, sd)
-      arrows(seq(1:length(learning_curve_iters)), colMeans(LC[1,1:2,]) - sd, seq(1:length(learning_curve_iters)), colMeans(auc_full_filt[1,1:2,]) + sd, length=0.05, angle=90, code=3, col="gray28")
+      sd <- apply(LC[1,success,], 2, sd)
+      arrows(seq(1:length(learning_curve_iters)), colMeans(LC[1,success,]) - sd, seq(1:length(learning_curve_iters)), colMeans(auc_full_filt[1,success,]) + sd, length=0.05, angle=90, code=3, col="gray28")
     }
     if(plot_all_points){
-      matplot(t(LC[1,,]),type="p", pch=16, col=alpha(colors_to_use[index],.4), add = TRUE, jitter=1)
+      matplot(t(LC[1,success,]),type="p", pch=16, col=alpha(colors_to_use[index],.4), add = TRUE, jitter=1)
     }
     index <- index + 1 
   }
   
   if(length(list_of_LCs) == 2){
-    significance <- unlist(lapply(seq(1:length(list_of_LCs[[1]][1,,1])), function(x){return(wilcox.test(list_of_LCs[[1]][1,,x], list_of_LCs[[2]][1,,x])$p.value)}))
+    significance <- unlist(lapply(seq(1:length(list_of_LCs[[1]][1,success,1])), function(x){return(wilcox.test(list_of_LCs[[1]][1,success,x], list_of_LCs[[2]][1,success,x])$p.value)}))
+    print(significance)
     points(seq(1:length(significance)), as.integer(significance < significance_level)*.1, pch = 8, col=c("white","black")[as.integer(significance < significance_level)+1])
     text(-3, .1, paste("p <",significance_level), cex = .8, col = "black")
   }

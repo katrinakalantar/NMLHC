@@ -136,19 +136,44 @@ for(d in seq(1:length(list_of_datasets))){
     # LEARNING CURVE FOR FEATURE SELECTION
     for(s in seq(1:length(learning_curve_iters))){
       
-      logger.info(msg = paste(c("FUNCTION - GENERATING Learning Curve - DATASET: ", d, ", ITERATION: ", k, 
+      logger.info(msg = paste(c("FUNCTION - GENERATING LC - DATASET: ", d, ", ITER: ", k, 
                                 ", LC: ", learning_curve_iters[s]), collapse=""))
       
       subs <- learning_curve_iters[s]
       
+      # experiment 2
+      flip_i <- .2
+      flip_j <- .2
+      a = inject_label_noise(yt, flip_i, flip_j)
+      yz = a[[1]]
+      fdz = a[[2]] # default is -1, if it's been flipped it changes to +1
+      
+      Xtsub <- NULL
       ytsub <- c(1)
+      yzsub <- c(1)
+      fdzsub <- c(1)
       while(length(unique(ytsub)) < 2){             # resample until you have at least one of each class
         sub_index <- sample(seq(dim(Xt)[1]), subs)
         Xtsub <- Xt[sub_index,]
         ytsub <- yt[sub_index]
-
+        
+        # experiment 2
+        yzsub <- yz[sub_index]    
+        fdzsub <- fdz[sub_index]
       }
       
+      # experiment 2
+      # identify correctly labeled samples
+      # assume you can identify correctly labelled training samples with 100% accuracy
+      Xtsub_correctlabels <- Xtsub[fdzsub < 0,]
+      yzsub_correctlabels <- yzsub[fdzsub < 0]
+      logger.info(msg = paste(c("# of correct samples: ", sum(fdzsub < 0), ", # of total samples: ", learning_curve_iters[s]), collapse = ""))
+      
+      # experiment 2
+      # standardize the subset of the subset data where labels are correct
+      a = standardise(Xtsub_correctlabels, Xs)
+      Xtsub_correctlabels = a[[1]]
+      Xssub_correctlabels = a[[2]]
       
       # standardize the subset data
       a = standardise(Xtsub, Xs)
@@ -167,56 +192,112 @@ for(d in seq(1:length(list_of_datasets))){
       rownames(Xt) <- rownames(dataset$x)
       rownames(Xtsub) <- rownames(dataset$x)[sub_index]
       rownames(Xs) <- rownames(dataset$xx)
+      
+      # experiment 2
+      colnames(Xtsub_correctlabels) <- colnames(dataset$x)
+      colnames(Xssub_correctlabels) <- colnames(dataset$xx)
       rownames(Xssub) <- rownames(dataset$xx)
+      rownames(Xtsub_correctlabels) <- rownames(Xtsub)[fdzsub < 0]
+      rownames(Xssub_correctlabels) <- rownames(dataset$xx)
       
-      rfs_unflipped <- run_FS(Xtsub, ytsub, "wilcoxon")
-      keep_vars <- head(rownames(rfs_unflipped), n = 5000)
+      # experiment 1
+      # compute features based on the LC subset (as opposed to the full dataset)
+      #rfs_unflipped <- run_FS(Xtsub, ytsub, "wilcoxon")
+      #keep_vars <- head(rownames(rfs_unflipped), n = 5000)
       
+      # experiment 2
+      # compute features based on the LC subset where labels are correct (as opposed to the total subset)
+      rfs_unflipped <- run_FS(Xtsub_correctlabels, yzsub_correctlabels, "wilcoxon")
+      keep_vars <- head(rownames(rfs_unflipped), n = 1000)
+      
+      # experiment 1
+      #Xtsub_filt <- Xtsub[,keep_vars]
+      #Xtfull_filt <- Xt[,keep_vars]
+      #Xssub_filt <- Xssub[,keep_vars]
+      #Xs_filt <- Xs[,keep_vars]
+      
+      # experiment 2
+      Xtsub_correctlabels_filt <- Xtsub_correctlabels[,keep_vars]
       Xtsub_filt <- Xtsub[,keep_vars]
-      Xtfull_filt <- Xt[,keep_vars]
+      Xssub_correctlabels_filt <- Xssub_correctlabels[,keep_vars]
       Xssub_filt <- Xssub[,keep_vars]
-      Xs_filt <- Xs[,keep_vars]
       
       # create a new winit for training the noised model
       winit = randn(dim(Xt)[2] + 1, 1)
       winit_filt = randn(dim(Xtsub_filt)[2] + 1, 1)
       
+      #
+      # EXPERIMENT 2
+      #
       
-      # # LR training on the full dataset without feature selection up front
+      # LR training on the full dataset without feature selection up front
+      options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
+      options$estG = FALSE
+      options$regFunc = common_reg
+      options$sn = common_sn
+      ginit = cbind(c(1,0),c(0,1))
+      result = run_rlr("rlr", winit, ginit, Xtsub_correctlabels, yzsub_correctlabels, options, Xssub_correctlabels, ys)
+      auc_sub[d, k, s] <- result$auc$auc
+      
+      # LR training on just the subset of data after filtering features based on subset of CORRECT SAMPLES
+      options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
+      options$estG = FALSE
+      options$regFunc = common_reg
+      options$sn = common_sn
+      ginit = cbind(c(1,0),c(0,1))
+      result = run_rlr("rlr", winit_filt, ginit, Xtsub_correctlabels_filt, yzsub_correctlabels, options, Xssub_correctlabels_filt, ys)
+      auc_sub_filt[d, k, s] <- result$auc$auc
+      
+      # LR training on the full dataset after filtering features based on subset
+      options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
+      options$estG = TRUE
+      options$regFunc = common_reg
+      options$sn = common_sn
+      ginit = cbind(c(.8,.2),c(.2,.8))
+      result = run_rlr("rlr", winit_filt, ginit, Xtsub_filt, yzsub, options, Xssub_filt, ys)
+      auc_full_filt[d, k, s] <- result$auc$auc
+      
+      
+      
+      # #
+      # # EXPERIMENT 1
+      # #
+      # 
+      # # # LR training on the full dataset without feature selection up front
+      # # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
+      # # options$estG = FALSE
+      # # options$regFunc = common_reg
+      # # options$sn = common_sn
+      # # ginit = cbind(c(1,0),c(0,1))
+      # # result = run_rlr("rlr", winit, ginit, Xt, yt, options, Xs, ys)
+      # # auc_full[d, k, s] <- result$auc$auc
+      # 
+      # # LR training on just the subset of data without feature selection up front
       # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
       # options$estG = FALSE
       # options$regFunc = common_reg
       # options$sn = common_sn
       # ginit = cbind(c(1,0),c(0,1))
-      # result = run_rlr("rlr", winit, ginit, Xt, yt, options, Xs, ys)
-      # auc_full[d, k, s] <- result$auc$auc
-      
-      # LR training on just the subset of data without feature selection up front
-      options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-      options$estG = FALSE
-      options$regFunc = common_reg
-      options$sn = common_sn
-      ginit = cbind(c(1,0),c(0,1))
-      result = run_rlr("rlr", winit, ginit, Xtsub, ytsub, options, Xssub, ys)
-      auc_sub[d, k, s] <- result$auc$auc
-      
-      # LR training on just the subset of data after filtering features based on subset
-      options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-      options$estG = FALSE
-      options$regFunc = common_reg
-      options$sn = common_sn
-      ginit = cbind(c(1,0),c(0,1))
-      result = run_rlr("rlr", winit_filt, ginit, Xtsub_filt, ytsub, options, Xssub_filt, ys)
-      auc_sub_filt[d, k, s] <- result$auc$auc
-      
-      # LR training on the full dataset after filtering features based on subset
-      options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-      options$estG = FALSE
-      options$regFunc = common_reg
-      options$sn = common_sn
-      ginit = cbind(c(1,0),c(0,1))
-      result = run_rlr("rlr", winit_filt, ginit, Xtfull_filt, yt, options, Xs_filt, ys)
-      auc_full_filt[d, k, s] <- result$auc$auc
+      # result = run_rlr("rlr", winit, ginit, Xtsub, ytsub, options, Xssub, ys)
+      # auc_sub[d, k, s] <- result$auc$auc
+      # 
+      # # LR training on just the subset of data after filtering features based on subset
+      # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
+      # options$estG = FALSE
+      # options$regFunc = common_reg
+      # options$sn = common_sn
+      # ginit = cbind(c(1,0),c(0,1))
+      # result = run_rlr("rlr", winit_filt, ginit, Xtsub_filt, ytsub, options, Xssub_filt, ys)
+      # auc_sub_filt[d, k, s] <- result$auc$auc
+      # 
+      # # LR training on the full dataset after filtering features based on subset
+      # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
+      # options$estG = FALSE
+      # options$regFunc = common_reg
+      # options$sn = common_sn
+      # ginit = cbind(c(1,0),c(0,1))
+      # result = run_rlr("rlr", winit_filt, ginit, Xtfull_filt, yt, options, Xs_filt, ys)
+      # auc_full_filt[d, k, s] <- result$auc$auc
       
       
     }
@@ -225,9 +306,9 @@ for(d in seq(1:length(list_of_datasets))){
 
 close(matlab)
 
-plot_multiple_learning_curves(list("AUC FULL FILT" = auc_full_filt, "AUC SUB FILT" = auc_sub_filt), c("magenta","orange"), learning_curve_iters)
-plot_multiple_learning_curves(list("AUC FULL FILT" = auc_full_filt, "AUC SUB FILT" = auc_sub_filt, "AUC SUB" = auc_sub), c("magenta","orange","gold"), learning_curve_iters)
-plot_multiple_learning_curves(list("AUC FULL FILT" = auc_full_filt, "AUC SUB FILT" = auc_sub_filt, "AUC SUB" = auc_sub, "AUC FULL" = auc_full), c("magenta","orange","gold", "blue"), learning_curve_iters, plot_all_points = FALSE)
+#plot_multiple_learning_curves(list("AUC FULL FILT" = auc_full_filt, "AUC SUB FILT" = auc_sub_filt), c("magenta","orange"), learning_curve_iters)
+#plot_multiple_learning_curves(list("AUC FULL FILT" = auc_full_filt, "AUC SUB FILT" = auc_sub_filt, "AUC SUB" = auc_sub), c("magenta","orange","gold"), learning_curve_iters)
+#plot_multiple_learning_curves(list("AUC FULL FILT" = auc_full_filt, "AUC SUB FILT" = auc_sub_filt, "AUC SUB" = auc_sub, "AUC FULL" = auc_full), c("magenta","orange","gold", "blue"), learning_curve_iters, plot_all_points = FALSE)
 #plot_multiple_learning_curves(list("AUC FULL FILT" = auc_full_filt, "AUC SUB" = auc_sub), c("magenta","gold"), learning_curve_iters)
 
 
@@ -236,7 +317,10 @@ save_data(auc_full_filt, get_variable_name(auc_full_filt), EXPERIMENT_DIR)
 save_data(auc_sub_filt, get_variable_name(auc_sub_filt), EXPERIMENT_DIR)
 save_data(auc_sub, get_variable_name(auc_sub), EXPERIMENT_DIR)
 
-
-
-
-
+# Experiment 2
+pdf(paste(EXPERIMENT_DIR, "experiment2_v1.pdf"), height = 5, width = 8)
+plot_multiple_learning_curves(list("AUC FULL FILT (rLR)" = auc_full_filt, "AUC SUB FILT (LR)" = auc_sub_filt), c("green","turquoise"), learning_curve_iters, success = 1:7, title = "Learning Curve:\n BACTERIA_VIRUS, n_features_filtered = 1000")
+plot_multiple_learning_curves(list("AUC SUB (LR)" = auc_sub, "AUC SUB FILT (LR)" = auc_sub_filt), c("blue","turquoise"), learning_curve_iters, success = 1:7, title = "Learning Curve:\n BACTERIA_VIRUS, n_features_filtered = 1000")
+plot_multiple_learning_curves(list("AUC SUB (LR)" = auc_sub, "AUC FULL FILT (rLR)" = auc_full_filt), c("blue","green"), learning_curve_iters, success = 1:7, title = "Learning Curve:\n BACTERIA_VIRUS, n_features_filtered = 1000")
+plot_multiple_learning_curves(list("AUC FULL FILT (rLR)" = auc_full_filt, "AUC SUB FILT (LR)" = auc_sub_filt, "AUC SUB (LR)" = auc_sub), c("green","turquoise","blue"), learning_curve_iters, success = 1:7, title = "Learning Curve:\n BACTERIA_VIRUS, n_features_filtered = 1000")
+dev.off()
