@@ -15,10 +15,16 @@ library(permute)       # contains the shuffle() function used in nmlhc_matlab2R_
 library(reshape2)      # contains the melt() function used in ggplot 
 library(mBALPkg)       # contains the data required to simulate data from mini-BAL cohort
 library(SimSeq)        # package required for simulation from an existing dataset
+library(SuperLearner)
+library(caret)
+library(ROCR)
+library(cvAUC)
+librrary(randomForest)
 
 source("/Users/kkalantar/Documents/Research/NMLHC/nmlhc_matlab2R_functions.R")
 source("/Users/kkalantar/Documents/Research/NMLHC/pylogger.R")  #sourced from: https://gist.github.com/jonathancallahan/3ed51265d3c6d56818458de95567d3ae
 
+pca_cols <- c("turquoise","green","magenta")
 
 #
 # set the experiment directory - this will contain the input parameter file and is where all the output will be written
@@ -53,7 +59,6 @@ stopifnot(check_params(parameters, c("ITER", "CLS", "DATASET_PARAM",
                                      "use_PCs","feature_select",
                                      "common_reg","common_sn","common_maxIter",
                                      "DS_SIZE_RANGE","DIM_RANGE","EXP_RANGE","EXP_RANGE_J")))
-
 
 ITER = parameters$ITER                              
 CLS = parameters$CLS                               # number of classes
@@ -136,8 +141,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
         dataset <- list_of_datasets[[names(list_of_datasets)[d]]]
         
         features_selected[[names(list_of_datasets)[d]]] <- list("unflipped" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)),
-                                           "flipped_wilcox" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)),
-                                           "flipped_ttest" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)))
+                                                                "flipped_wilcox" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)),
+                                                                "flipped_ttest" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)))
         
         
         for(j in seq(1:length(EXP_RANGE_J))){
@@ -149,6 +154,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
             #DS_SIZE = DS_SIZE_RANGE[dsize];
             flip_j = EXP_RANGE_J[j]
             flip_i = EXP_RANGE[i]
+            print(flip_i)
+            print(flip_j)
             
             logger.info(msg = paste(c("MAIN - ITER - ", "DIM = ", DIM, ", DS_SIZE = ", DS_SIZE, ", DATASET = ", d,
                                       ", flip_j = ", flip_j, ", flip_i = ", flip_i, ", K = ", k), collapse="" ))
@@ -161,9 +168,6 @@ for(dimr in seq(1:length(DIM_RANGE))){
             Xs = dataset$xx
             ys = dataset$tt
             
-            #a = standardiseR(Xt, Xs)
-            #Xtold = a[[1]]
-            #Xsold = a[[2]]
             a = standardise(Xt, Xs)
             Xt = a[[1]]
             Xs = a[[2]]
@@ -172,11 +176,45 @@ for(dimr in seq(1:length(DIM_RANGE))){
             rownames(Xt) <- rownames(dataset$x)
             rownames(Xs) <- rownames(dataset$xx)
             
-            
             a = inject_label_noise(yt, flip_i, flip_j)
             yz = a[[1]]
             fdz = a[[2]]
             
+            
+            pca_res <- prcomp(Xt)
+            plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,cex=1.2, lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1])
+            
+            pca_form <- cbind(pca_res$x, as.factor(yz))
+            colnames(pca_form) <- c(colnames(pca_res$x), "yz")
+            pca_form <- as.data.frame(pca_form)
+            pca_form[, 'yz'] <- as.factor(pca_form[, 'yz'])
+            out <- HARF(yz~., data = pca_form, ntrees = 100)
+            print(out$remIdx)
+            logger.info(msg = "HARF removed:")
+            logger.info(msg = out$remIdx)
+            logger.info(msg = "HARF replaced:")
+            logger.info(msg = out$repIdx)
+            
+            shuff_idx <- shuffle(seq(1:75))
+            shuffled_x <- pca_res$x[shuff_idx,]
+            shuffled_yz <- yz[shuff_idx]
+            shuffled_fdz <- fdz[shuff_idx]
+
+            
+            #method options = 'lasso', 'glm', 'rf', 'kknn'
+
+            filter <- make_ensemble(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+                               c("svmLinear","kknn","rf"))
+            
+            #filter <- make_superlearner(as.data.frame(pca_res$x), yz, 10, list("SL.randomForest", "SL.glmnet", "SL.caret.rpart")) #"SL.svm", , "SL.svm"
+            if(length(table(shuffled_fdz)) > 1){
+              logger.info(msg = "MAJORIFY FILTER")
+              a <- flag_flipped_samples(filter$MF, shuffled_fdz)
+              logger.info(msg = a)
+              logger.info(msg = "CONSENSUS FILTER")
+              a <- flag_flipped_samples(filter$CF, shuffled_fdz)
+              logger.info(msg = a)
+            }
             
             
             # DO feature selection on the original dataset, save features for evaluation
@@ -191,67 +229,38 @@ for(dimr in seq(1:length(DIM_RANGE))){
             # create a new winit for training the noised model
             winit = randn(dim(Xt)[2] + 1, 1)
             
-            # rLR (using true labels) to give baseline of number of features
-            options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-            options$estG = FALSE
-            options$regFunc = common_reg
-            options$sn = common_sn
-            ginit = cbind(c(1,0),c(0,1))
-            result = run_rlr("rlr", winit, ginit, Xt, yt, options, Xs, ys)
-            
-            # rLR (using flipped labels) with no estimation of G
-            options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-            options$estG = FALSE
-            options$regFunc = common_reg
-            options$sn = common_sn
-            result = run_rlr("rlr", winit, cbind(c(1,0),c(0,1)), Xt, yz, options, Xs, ys)
-            err_lr[dimr, dsize, d, k, j, i] = result$error
-            auc_lr[dimr, dsize, d, k, j, i] = result$auc$auc
-            
-            # rLR (using flipped labels) with estimation of G 
-            options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-            options$estG = TRUE;
-            options$regFunc = common_reg;
-            options$sn = common_sn;
-            rr = .2;
-            # result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys) # this was the original fn
-            result <- NULL
-            
-            result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
-            #try(
-            #  #logger.info(msg = paste("failed function repeating function: ", attempt, sep = ""))
-            #  result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
-            #)
-            
-            #attempt <- 0
-            #while(is.null(result) && attempt <= 3){
-            #  attempt <- attempt + 1
-            #  try(
-            #    #logger.info(msg = paste("failed function repeating function: ", attempt, sep = ""))
-            #    result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
-            #  )
-            #  logger.info(msg = paste("failed function repeating function: ", attempt, sep = ""))
-            #}
-            # result = tryCatch({
-            #   run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
-            # }, error = function(cond){
-            #   logger.info(msg = "ERROR")
-            #   logger.info(msg = cond)
-            #   logger.info(msg = list(error = NULL, auc = list(auc=NULL)))
-            #   print(list(error = NULL, auc = list(auc=NULL)))
-            #   return(list(error = NULL, auc = list(auc=NULL)))
-            # })
-            
-            #result <- possibly_run_rlr()
-            
-            logger.info(msg = paste("CHECK RESULT of tryCatch", result$error))
-            
-            #result = run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
-            
-            if(!is.null(result)){
-              err_rlr[dimr, dsize, d, k, j, i] = result$error
-              auc_rlr[dimr, dsize, d, k, j, i] = result$auc$auc
-            }
+            # # rLR (using true labels) to give baseline of number of features
+            # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
+            # options$estG = FALSE
+            # options$regFunc = common_reg
+            # options$sn = common_sn
+            # ginit = cbind(c(1,0),c(0,1))
+            # result = run_rlr("rlr", winit, ginit, Xt, yt, options, Xs, ys)
+            # 
+            # # rLR (using flipped labels) with no estimation of G
+            # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
+            # options$estG = FALSE
+            # options$regFunc = common_reg
+            # options$sn = common_sn
+            # result = run_rlr("rlr", winit, cbind(c(1,0),c(0,1)), Xt, yz, options, Xs, ys)
+            # err_lr[dimr, dsize, d, k, j, i] = result$error
+            # auc_lr[dimr, dsize, d, k, j, i] = result$auc$auc
+            # 
+            # # rLR (using flipped labels) with estimation of G 
+            # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
+            # options$estG = TRUE;
+            # options$regFunc = common_reg;
+            # options$sn = common_sn;
+            # rr = .2;
+            # # result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys) # this was the original fn
+            # result <- NULL
+            # 
+            # result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
+            # logger.info(msg = paste("CHECK RESULT of tryCatch", result$error))
+            # if(!is.null(result)){
+            #   err_rlr[dimr, dsize, d, k, j, i] = result$error
+            #   auc_rlr[dimr, dsize, d, k, j, i] = result$auc$auc
+            # }
             
             
             # # gammaLR (using flipped labels) with estimation of G 
@@ -263,9 +272,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
             # auc_gammalr[[k]][i,j] = result$auc
             
             
-            
             # run the EM algorithm (R implementation)
-            
             
             
             # # run standard LASSO regression

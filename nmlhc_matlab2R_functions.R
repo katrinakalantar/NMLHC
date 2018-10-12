@@ -1,10 +1,40 @@
 
+make_ensemble <- function(x, y, library){
+  list_of_results <- list()
+  for(algorithmL in library){
+    ctrl <- trainControl(method = "cv", savePred=T, classProb=T)
+    mod <- train(x, y, method = algorithmL, trControl = ctrl)
+    all_predictions <- mod$pred
+    predictions_to_use <- all_predictions[all_predictions[,names(mod$bestTune)[[1]]] == mod$bestTune[[1]],]
+    concordant <- predictions_to_use$pred == predictions_to_use$obs
+    discordant <- predictions_to_use$pred != predictions_to_use$obs
+    list_of_results[[algorithmL]] = discordant
+  }
+  
+  r <- do.call(cbind, list_of_results)
+  
+  majority_filter <- rowSums(r)/ncol(r) > .5
+  consensus_filter <- rowSums(r)/ncol(r) == 1
+  
+  keep_majority_filter <- !majority_filter
+  keep_consensus_filter <- !consensus_filter
+  
+  return(list("MF" = keep_majority_filter, "CF" = keep_consensus_filter))#, "P" = p))
+}
+
+
+flag_flipped_samples <- function(keeping, fdz){
+  
+  cm <- confusionMatrix(factor(as.integer(keeping)), factor(as.integer(fdz < 0)), positive = "1")
+  print(cm)
+  return(cm)
+}
 
 make_superlearner <- function(x, y, v, library){
   
   cv_sl = CV.SuperLearner(Y = y, X = x, family = binomial(), V = v,
                           method = "method.AUC",
-                          SL.library =  library)
+                          SL.library =  library) #
   
   # create the barplot of learners.
   a <- summary(cv_sl)
@@ -23,9 +53,11 @@ make_superlearner <- function(x, y, v, library){
   print(p)
   
   individual_predictions <- cv_sl$library.predict
+  print(individual_predictions)
   binary_predictions <- individual_predictions > .5
-  concordant <- binary_predictions == y
-  discordant <- binary_predictions != y
+  print(binary_predictions)
+  concordant <- (binary_predictions+1) == as.numeric(y)
+  discordant <- (binary_predictions+1) != as.numeric(y)
   
   barplot(table(rowSums(discordant)/ncol(discordant))) # here 1 is ConsensusFiltering, > .5 is Majority Filtering
   abline(v = 2.5, col="red", lty=2)
@@ -269,9 +301,6 @@ subset_known_dataset <- function(geo_data, pos_regex, neg_regex, source_variable
   
   pos_split <- split_train_test(geo_data[, grep(pos_regex, pData(geo_data)[,source_variable])])
   neg_split <- split_train_test( geo_data[, grep(neg_regex, pData(geo_data)[,source_variable])])
-  
-  print(dim(pos_split$training_set))
-  print(dim(neg_split$training_set))
   
   print(class(pos_split$training_set))
   
