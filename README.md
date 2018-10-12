@@ -81,7 +81,7 @@ Here are dataset-specific .json blocks for pre-curated datasets used in the anal
 
 ```
 {
-      "name": "Listeria_Non-infectious",  # can also use Salmonella as a contrast here
+      "name": "Listeria_Non-infected",  # can also use Salmonella as a contrast here
       "type": "geo",
       "series_filename": "/Users/kkalantar/Documents/Research/NMLHC/geo_data/ANCESTRY_DATASET.rds",
       "source_variable": "infection:ch1"
