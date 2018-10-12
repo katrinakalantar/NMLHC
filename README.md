@@ -84,7 +84,7 @@ Here are dataset-specific .json blocks for pre-curated datasets used in the anal
       "name": "Listeria_Non-infectious",  # can also use Salmonella as a contrast here
       "type": "geo",
       "series_filename": "/Users/kkalantar/Documents/Research/NMLHC/geo_data/ANCESTRY_DATASET.rds",
-      "source_variable": "source_name_ch1.2"
+      "source_variable": "infection:ch1"
 }
 ```
 
@@ -95,7 +95,7 @@ Here are dataset-specific .json blocks for pre-curated datasets used in the anal
       "name": "IFN-beta_baseline",  # can also use influenza as a contrast here
       "type": "geo",
       "series_filename": "/Users/kkalantar/Documents/Research/NMLHC/geo_data/ANTIVIRAL_DATASET.rds",
-      "source_variable": "source_name_ch1.3"
+      "source_variable": "characteristics_ch1.3"
 }
 ```
 
