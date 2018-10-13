@@ -98,6 +98,8 @@ auc_lr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$nam
 auc_rlr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 auc_gammalr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 
+CMs_MF = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
+CMs_CF = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 
 features_selected <- list() 
 
@@ -211,9 +213,12 @@ for(dimr in seq(1:length(DIM_RANGE))){
               logger.info(msg = "MAJORIFY FILTER")
               a <- flag_flipped_samples(filter$MF, shuffled_fdz)
               logger.info(msg = a)
+              CMs_MF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
+              
               logger.info(msg = "CONSENSUS FILTER")
               a <- flag_flipped_samples(filter$CF, shuffled_fdz)
               logger.info(msg = a)
+              CMs_CF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
             }
             
             
@@ -343,3 +348,7 @@ plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_ga
 
 overlap <- plot_feature_similarity(features_selected, c(100, 500, 1000, 2500, 5000, 10000))#, "fileroot" = paste(EXPERIMENT_DIR, "features_byflip", sep=""))
 
+
+
+plot_confusion_matrix(CMs_MF, colorRampPalette(c("dodgerblue", "white"))(n = 101))
+plot_confusion_matrix(CMs_CF, colorRampPalette(c("purple", "white"))(n = 101))

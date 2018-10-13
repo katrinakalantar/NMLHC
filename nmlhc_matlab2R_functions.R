@@ -1,4 +1,27 @@
 
+plot_confusion_matrix <- function(CM, colorpal = colorRampPalette(c("purple3", "white"))(n = 101) ){
+  a <- CM[1,1,1,1,,]
+  gl <- 0
+  plot_list <- list()
+  for(i in colnames(a)){
+    for(j in rownames(a)){
+      gl <- gl + 1
+      ints <- as.numeric(strsplit(a[j,i],"_")[[1]])
+      #m <- matrix(ints/sum(ints), ncol = 2)
+      m <- matrix(ints, ncol=2)
+      m <- t(t(m)/colSums(m))
+      colnames(m) <- c("REF_0", "REF_1")
+      rownames(m) <- c("PRED_0", "PRED_1")
+      hmp <- pheatmap(m, cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE,col=colorpal,
+                      border_color = "black", fontsize_number = 10, cellheight=25, cellwidth=25, breaks = seq(0,1,by=.01))
+      plot_list[[gl]] <- hmp[[4]]
+    }
+  }
+  
+  #par(mar=c(5,15,5,5))
+  g <- do.call(grid.arrange, plot_list)
+}
+
 make_ensemble <- function(x, y, library){
   list_of_results <- list()
   for(algorithmL in library){
@@ -27,6 +50,7 @@ flag_flipped_samples <- function(keeping, fdz){
   
   cm <- confusionMatrix(factor(as.integer(keeping)), factor(as.integer(fdz < 0)), positive = "1")
   print(cm)
+  plot(cm$table)
   return(cm)
 }
 
