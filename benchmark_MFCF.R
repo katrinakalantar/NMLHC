@@ -155,6 +155,13 @@ for(dimr in seq(1:length(DIM_RANGE))){
           dataset$xx <- convert_genenames(dataset$xx)
           dataset$x <- collapse_pathways(dataset$x, GSA.read.gmt(parameters$geneset_file))
           dataset$xx <- collapse_pathways(dataset$xx, GSA.read.gmt(parameters$geneset_file))
+          
+          if(length(parameters$pathway_keywords) > 0){
+            keep_pathways <- unique(unlist(lapply(parameters$pathway_keywords, function(x){return(g$geneset.names[grepl(x,g$geneset.names)])})))
+            dataset$x <- dataset$x[,colnames(dataset$x) %in% keep_pathways]
+            dataset$xx <- dataset$xx[,colnames(dataset$xx) %in% keep_pathways]
+          }
+          
         }else if(parameters$convert_genenames){
           dataset$x <- convert_genenames(dataset$x)
           dataset$xx <- convert_genenames(dataset$xx)
@@ -217,7 +224,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
             logger.info(msg = "HARF replaced:")
             logger.info(msg = out$repIdx)
             
-            shuff_idx <- shuffle(seq(1:75))
+            shuff_idx <- shuffle(seq(1:dim(Xt)[1]))
             shuffled_x <- pca_res$x[shuff_idx,]
             shuffled_Xt <- Xt[shuff_idx,]
             shuffled_yz <- yz[shuff_idx]

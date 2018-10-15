@@ -36,6 +36,18 @@ Here is an example of the overall .json structure:
   "geneset_file": "/Users/kkalantar/Documents/Research/NMLHC/reference/c2.cp.v6.2.symbols.gmt",
   "convert_genenames": true,
   "collapse_pathways": false,
+  "pathway_keywords":[
+    "VIR",
+    "INF",
+    "IFN",
+    "JAK",
+    "STAT",
+    "BACT",
+    "PATHO",
+    "RIG",
+    "MDA",
+    "CX"
+  ],
   "datasets":[
     {
       "name": "BACTERIA_VIRUS",
