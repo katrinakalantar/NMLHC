@@ -20,6 +20,13 @@ library(caret)
 library(ROCR)
 library(cvAUC)
 librrary(randomForest)
+library(NoiseFiltersR)
+library(biomaRt)       # required for converting genenames
+library(GSA)           # required for reading the .gmt file for collapsing gene names
+gmt_file <- GSA.read.gmt("/Users/kkalantar/Downloads/c2.cp.v6.2.symbols.gmt")
+
+
+
 
 source("/Users/kkalantar/Documents/Research/NMLHC/nmlhc_matlab2R_functions.R")
 source("/Users/kkalantar/Documents/Research/NMLHC/pylogger.R")  #sourced from: https://gist.github.com/jonathancallahan/3ed51265d3c6d56818458de95567d3ae
@@ -142,6 +149,18 @@ for(dimr in seq(1:length(DIM_RANGE))){
         
         dataset <- list_of_datasets[[names(list_of_datasets)[d]]]
         
+        
+        if(parameters$collapse_pathways){
+          dataset$x <- convert_genenames(dataset$x)     # ensures that the gene names are converted prior to collapsing pathways even if that variable isn't set
+          dataset$xx <- convert_genenames(dataset$xx)
+          dataset$x <- collapse_pathways(dataset$x, GSA.read.gmt(parameters$geneset_file))
+          dataset$xx <- collapse_pathways(dataset$xx, GSA.read.gmt(parameters$geneset_file))
+        }else if(parameters$convert_genenames){
+          dataset$x <- convert_genenames(dataset$x)
+          dataset$xx <- convert_genenames(dataset$xx)
+        }
+        
+        
         features_selected[[names(list_of_datasets)[d]]] <- list("unflipped" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)),
                                                                 "flipped_wilcox" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)),
                                                                 "flipped_ttest" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)))
@@ -165,6 +184,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
             # obtain the data to be used in this analyses
             # dataset <- feval(DATASET_PARAM, as.numeric(CLS), as.numeric(DIM), as.numeric(DS_SIZE), 1000, 1, "gen")
             
+
             Xt = dataset$x
             yt = dataset$y
             Xs = dataset$xx
@@ -199,14 +219,20 @@ for(dimr in seq(1:length(DIM_RANGE))){
             
             shuff_idx <- shuffle(seq(1:75))
             shuffled_x <- pca_res$x[shuff_idx,]
+            shuffled_Xt <- Xt[shuff_idx,]
             shuffled_yz <- yz[shuff_idx]
             shuffled_fdz <- fdz[shuff_idx]
 
             
             #method options = 'lasso', 'glm', 'rf', 'kknn'
 
+            # filter with PC
             filter <- make_ensemble(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
                                c("svmLinear","kknn","rf"))
+            
+            # filter without PC
+            #filter <- make_ensemble(shuffled_Xt, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+            #                   c("svmLinear","kknn","rf"))
             
             #filter <- make_superlearner(as.data.frame(pca_res$x), yz, 10, list("SL.randomForest", "SL.glmnet", "SL.caret.rpart")) #"SL.svm", , "SL.svm"
             if(length(table(shuffled_fdz)) > 1){

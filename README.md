@@ -33,6 +33,9 @@ Here is an example of the overall .json structure:
   "common_reg": "lasso",
   "common_sn": 1e-8,
   "common_maxIter": 1000,
+  "geneset_file": "/Users/kkalantar/Documents/Research/NMLHC/reference/c2.cp.v6.2.symbols.gmt",
+  "convert_genenames": true,
+  "collapse_pathways": false,
   "datasets":[
     {
       "name": "BACTERIA_VIRUS",

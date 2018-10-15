@@ -1,4 +1,41 @@
 
+
+convert_genenames <- function(data, gmt_file){
+  
+  genenames <- colnames(data)
+  
+  # # create the genemap variable, so we don't rely on biomaRt
+  # 
+  # #ran this section of code once to generate the HSapiens_gene_ensembl.csv file
+  # listMarts(host="www.ensembl.org")
+  # mart = useMart(biomart="ENSEMBL_MART_ENSEMBL",dataset="hsapiens_gene_ensembl", host="www.ensembl.org")
+  # genemap <- getBM( attributes = c("ensembl_gene_id", "hgnc_symbol"),
+  #                     filters = "ensembl_gene_id",
+  #                     values = colnames(x_mod),
+  #                     mart)
+  # write.csv(genemap,"/Users/kkalantar/Documents/Research/NMLHC/reference/HSapiens_gene_ensembl.csv",quote=FALSE,row.names=FALSE)
+  
+  genemap <- read.csv("/Users/kkalantar/Documents/Research/NMLHC/reference/HSapiens_gene_ensembl.csv", header = TRUE)
+  
+  # create an index in which you are rearranging ensmbl gene ids from genemap into same order as they are in genenames
+  idx <- match(genenames, genemap$ensembl_gene_id)  
+  hgnc_symbol <- genemap$hgnc_symbol[idx]
+  
+  # convert original genecounts matrix, filtered for PC-genes, to have HGNC rownames (necessary to run CIBERSORT)
+  pc_hgnc_genecounts = data
+  colnames(pc_hgnc_genecounts) = hgnc_symbol
+  pc_hgnc_genecounts <- pc_hgnc_genecounts[,!(colnames(pc_hgnc_genecounts) %in% c(""))]
+  
+  return(pc_hgnc_genecounts)
+}
+
+collapse_pathways <- function(data, gmt_file){
+  pathway_sums <- lapply(gmt_file$genesets, function(x){return(rowSums(data[,colnames(data) %in% unlist(x)]))})
+  names(pathway_sums) <- gmt_file$geneset.names
+  final_matrix <- do.call(cbind, pathway_sums)
+}
+
+
 plot_confusion_matrix <- function(CM, colorpal = colorRampPalette(c("purple3", "white"))(n = 101) ){
   a <- CM[1,1,1,1,,]
   gl <- 0
@@ -322,11 +359,14 @@ split_train_test <- function(input){
 #' subset_known_dataset(geo_data, "BACTERIA", "VIRUS", "characteristics_ch1.2")
 subset_known_dataset <- function(geo_data, pos_regex, neg_regex, source_variable){
   print("inside subset_known_dataset()")
-  
+
   pos_split <- split_train_test(geo_data[, grep(pos_regex, pData(geo_data)[,source_variable])])
   neg_split <- split_train_test( geo_data[, grep(neg_regex, pData(geo_data)[,source_variable])])
   
   print(class(pos_split$training_set))
+  print(class(neg_split$training_set))
+  print(class(pos_split$test))
+  print(class(neg_split$test_set))
   
   full_train <- Biobase::combine(pos_split$training_set, neg_split$training_set)
   full_test <- Biobase::combine(pos_split$test_set, neg_split$test_set)
@@ -334,13 +374,15 @@ subset_known_dataset <- function(geo_data, pos_regex, neg_regex, source_variable
   true_labels_train <- rep(0, length(pData(full_train)[,source_variable]))
   true_labels_train[grep(pos_regex, pData(full_train)[,source_variable])] <- 1
   true_labels_train <- true_labels_train + 1
-  
+
   true_labels_test <- rep(0, length(pData(full_test)[,source_variable]))
   true_labels_test[grep(pos_regex, pData(full_test)[,source_variable])] <- 1
   true_labels_test <- true_labels_test + 1
   
-  return(list("x" = t(as.matrix(full_train)), "y" = as.matrix(true_labels_train), "ff" = as.matrix(rep(0, length(true_labels_train))),
-              "xx" = t(as.matrix(full_test)), "tt" = as.matrix(true_labels_test), "dd" = as.matrix(rep(0, length(true_labels_test)))))
+  print(full_train)
+  
+  return(list("x" = t(as.matrix(exprs(full_train))), "y" = as.matrix(true_labels_train), "ff" = as.matrix(rep(0, length(true_labels_train))),
+              "xx" = t(as.matrix(exprs(full_test))), "tt" = as.matrix(true_labels_test), "dd" = as.matrix(rep(0, length(true_labels_test)))))
   
 }
 
