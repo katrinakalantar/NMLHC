@@ -156,11 +156,14 @@ for(dimr in seq(1:length(DIM_RANGE))){
           dataset$x <- collapse_pathways(dataset$x, GSA.read.gmt(parameters$geneset_file))
           dataset$xx <- collapse_pathways(dataset$xx, GSA.read.gmt(parameters$geneset_file))
           
-          if(length(parameters$pathway_keywords) > 0){
-            keep_pathways <- unique(unlist(lapply(parameters$pathway_keywords, function(x){return(g$geneset.names[grepl(x,g$geneset.names)])})))
-            dataset$x <- dataset$x[,colnames(dataset$x) %in% keep_pathways]
-            dataset$xx <- dataset$xx[,colnames(dataset$xx) %in% keep_pathways]
-          }
+          print("DIM of Dataset X")
+          print(dim(dataset$x))
+          
+          #if(length(parameters$pathway_keywords) > 0){
+          #  keep_pathways <- unique(unlist(lapply(parameters$pathway_keywords, function(x){return(g$geneset.names[grepl(x,g$geneset.names)])})))
+          #  dataset$x <- dataset$x[,colnames(dataset$x) %in% keep_pathways]
+          #  dataset$xx <- dataset$xx[,colnames(dataset$xx) %in% keep_pathways]
+          #}
           
         }else if(parameters$convert_genenames){
           dataset$x <- convert_genenames(dataset$x)
@@ -223,6 +226,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
             logger.info(msg = out$remIdx)
             logger.info(msg = "HARF replaced:")
             logger.info(msg = out$repIdx)
+            print(paste("Of all samples that were flipped, HARF correctly removed X:", (length(intersect(which(fdz > 0), out$remIdx))/ length(which(fdz > 0)))*100))
+            print(paste("Of all samples removed by HARF, X were correctly removed:", (length(intersect(which(fdz > 0), out$remIdx))/ length(out$remIdx))*100))
             
             shuff_idx <- shuffle(seq(1:dim(Xt)[1]))
             shuffled_x <- pca_res$x[shuff_idx,]
@@ -235,7 +240,33 @@ for(dimr in seq(1:length(DIM_RANGE))){
 
             # filter with PC
             filter <- make_ensemble(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-                               c("svmLinear","kknn","rf"))
+                               c("regLogistic", "rf"))#, "RRF")),"kknn", "svmLinear",
+            logger.info(msg=toString(colSums(filter$full_res)))
+            logger.info(msg = toString(colSums(filter$full_res)/length(shuffled_yz)))
+            
+            
+            
+            # #
+            # # TESTING AREA
+            # #
+            # ctrl <- trainControl(method = "repeatedcv", savePred=T, classProb=T, number = 10, repeats = 5)
+            # mod <- train(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+            #              method = "rf", trControl = ctrl)
+            # all_predictions <- mod$pred
+            # predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
+            # 
+            # 
+            # ctrl <- trainControl(method = "cv", savePred=T, classProb=T)
+            # mod <- train(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+            #              method = "rf", trControl = ctrl)
+            # all_predictions <- mod$pred
+            # predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
+            # 
+            # #
+            # # END TESTING AREA
+            # #
+            
+            
             
             # filter without PC
             #filter <- make_ensemble(shuffled_Xt, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
@@ -252,6 +283,12 @@ for(dimr in seq(1:length(DIM_RANGE))){
               a <- flag_flipped_samples(filter$CF, shuffled_fdz)
               logger.info(msg = a)
               CMs_CF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
+            }else{
+              CMs_MF[dimr, dsize, d, k, j, i] = paste(c(1,1,1,1), collapse="_")
+              CMs_CF[dimr, dsize, d, k, j, i] = paste(c(1,1,1,1), collapse="_")
+              logger.info(msg = "flip_i and flip_j = 0, so no QC metric available:")
+              logger.info(msg = paste("MF: ", toString(table(filter$MF))))
+              logger.info(msg = paste("CF: ", toString(table(filter$CF))))
             }
             
             

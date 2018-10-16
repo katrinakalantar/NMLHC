@@ -33,6 +33,12 @@ collapse_pathways <- function(data, gmt_file){
   pathway_sums <- lapply(gmt_file$genesets, function(x){return(rowSums(data[,colnames(data) %in% unlist(x)]))})
   names(pathway_sums) <- gmt_file$geneset.names
   final_matrix <- do.call(cbind, pathway_sums)
+  return(final_matrix)
+}
+
+collapse_pathways2 <- function(data, gmt_file){
+  pathway_genes <- unique(unlist(lapply(gmt_file$genesets, function(x){return(unlist(x))})))
+  return(data[,colnames(data) %in% pathways_genes])
 }
 
 
@@ -46,7 +52,7 @@ plot_confusion_matrix <- function(CM, colorpal = colorRampPalette(c("purple3", "
       ints <- as.numeric(strsplit(a[j,i],"_")[[1]])
       #m <- matrix(ints/sum(ints), ncol = 2)
       m <- matrix(ints, ncol=2)
-      m <- t(t(m)/colSums(m))
+      #m <- t(t(m)/colSums(m))
       colnames(m) <- c("REF_0", "REF_1")
       rownames(m) <- c("PRED_0", "PRED_1")
       hmp <- pheatmap(m, cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE,col=colorpal,
@@ -65,9 +71,15 @@ make_ensemble <- function(x, y, library){
     ctrl <- trainControl(method = "cv", savePred=T, classProb=T)
     mod <- train(x, y, method = algorithmL, trControl = ctrl)
     all_predictions <- mod$pred
-    predictions_to_use <- all_predictions[all_predictions[,names(mod$bestTune)[[1]]] == mod$bestTune[[1]],]
+    predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
+    predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]   # MAJOR FIX 10/15
     concordant <- predictions_to_use$pred == predictions_to_use$obs
+    print(algorithmL)
+    print(sum(predictions_to_use$pred == predictions_to_use$obs)/length(predictions_to_use$obs))
     discordant <- predictions_to_use$pred != predictions_to_use$obs
+    
+    print(sum(predictions_to_use$pred != predictions_to_use$obs)/length(predictions_to_use$obs))
+    
     list_of_results[[algorithmL]] = discordant
   }
   
@@ -79,7 +91,7 @@ make_ensemble <- function(x, y, library){
   keep_majority_filter <- !majority_filter
   keep_consensus_filter <- !consensus_filter
   
-  return(list("MF" = keep_majority_filter, "CF" = keep_consensus_filter))#, "P" = p))
+  return(list("MF" = keep_majority_filter, "CF" = keep_consensus_filter, "full_res" = r) )#, "P" = p))
 }
 
 
