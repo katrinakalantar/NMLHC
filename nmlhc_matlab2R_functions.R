@@ -36,8 +36,12 @@ collapse_pathways <- function(data, gmt_file){
   return(final_matrix)
 }
 
-collapse_pathways2 <- function(data, gmt_file){
-  pathway_genes <- unique(unlist(lapply(gmt_file$genesets, function(x){return(unlist(x))})))
+collapse_pathways2 <- function(data, gmt_file, keep_pathways){
+  print("In collapse_pathways2")
+  #names(gmt_file$genesets) <- gmt_file$geneset.names
+  #pathway_genes <- unique(unlist(lapply(gmt_file$genesets, function(x){return(unlist(x))})))
+  pathways_genes <- as.vector(unique(unlist(lapply(seq(1:length(gmt_file$genesets)), function(x){if(gmt_file$geneset.names[x] %in% keep_pathways){return(gmt_file$genesets[x])}}))))
+  print(length(pathways_genes))
   return(data[,colnames(data) %in% pathways_genes])
 }
 
@@ -65,14 +69,29 @@ plot_confusion_matrix <- function(CM, colorpal = colorRampPalette(c("purple3", "
   g <- do.call(grid.arrange, plot_list)
 }
 
-make_ensemble <- function(x, y, library){
+make_ensemble <- function(x, y, library, multiple = TRUE){
   list_of_results <- list()
   for(algorithmL in library){
     ctrl <- trainControl(method = "cv", savePred=T, classProb=T)
+    
+    if(multiple){
+      print("generating ensemble with repeats")
+      ctrl <- trainControl(method = "repeatedcv", savePred=T, classProb=T, number = 10, repeats = 5)
+    }
+    
     mod <- train(x, y, method = algorithmL, trControl = ctrl)
     all_predictions <- mod$pred
     predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
     predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]   # MAJOR FIX 10/15
+    
+    if(multiple){
+      # collapse predictions_to_use
+      n <- do.call(rbind, lapply(unique(predictions_to_use$rowIndex), function(x){b = predictions_to_use[predictions_to_use$rowIndex == x,]; a = which.max(table(b$pred)); print(names(a)); return(b[b$pred == names(a), ])}))
+      n <- n[,c("pred","obs","rowIndex")]
+      n <- n[!duplicated(n), ]
+      predictions_to_use <- n
+    }
+    
     concordant <- predictions_to_use$pred == predictions_to_use$obs
     print(algorithmL)
     print(sum(predictions_to_use$pred == predictions_to_use$obs)/length(predictions_to_use$obs))

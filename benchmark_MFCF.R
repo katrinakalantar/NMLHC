@@ -23,7 +23,6 @@ librrary(randomForest)
 library(NoiseFiltersR)
 library(biomaRt)       # required for converting genenames
 library(GSA)           # required for reading the .gmt file for collapsing gene names
-gmt_file <- GSA.read.gmt("/Users/kkalantar/Downloads/c2.cp.v6.2.symbols.gmt")
 
 
 
@@ -149,22 +148,23 @@ for(dimr in seq(1:length(DIM_RANGE))){
         
         dataset <- list_of_datasets[[names(list_of_datasets)[d]]]
         
-        
         if(parameters$collapse_pathways){
+          g <- GSA.read.gmt(parameters$geneset_file)
+          
           dataset$x <- convert_genenames(dataset$x)     # ensures that the gene names are converted prior to collapsing pathways even if that variable isn't set
           dataset$xx <- convert_genenames(dataset$xx)
-          dataset$x <- collapse_pathways(dataset$x, GSA.read.gmt(parameters$geneset_file))
-          dataset$xx <- collapse_pathways(dataset$xx, GSA.read.gmt(parameters$geneset_file))
           
-          print("DIM of Dataset X")
+          print(head(dataset$x[,1:10]))
+          
+          
+          keep_pathways <- unique(unlist(lapply(parameters$pathway_keywords, function(x){return(g$geneset.names[grepl(x,g$geneset.names)])})))
+          
+          print(length(keep_pathways))
+          dataset$x <- collapse_pathways2(dataset$x, g, keep_pathways)
+          dataset$xx <- collapse_pathways2(dataset$xx, g, keep_pathways)
           print(dim(dataset$x))
-          
-          #if(length(parameters$pathway_keywords) > 0){
-          #  keep_pathways <- unique(unlist(lapply(parameters$pathway_keywords, function(x){return(g$geneset.names[grepl(x,g$geneset.names)])})))
-          #  dataset$x <- dataset$x[,colnames(dataset$x) %in% keep_pathways]
-          #  dataset$xx <- dataset$xx[,colnames(dataset$xx) %in% keep_pathways]
-          #}
-          
+          print(dim(dataset$xx))
+
         }else if(parameters$convert_genenames){
           dataset$x <- convert_genenames(dataset$x)
           dataset$xx <- convert_genenames(dataset$xx)
@@ -249,12 +249,12 @@ for(dimr in seq(1:length(DIM_RANGE))){
             # #
             # # TESTING AREA
             # #
-            # ctrl <- trainControl(method = "repeatedcv", savePred=T, classProb=T, number = 10, repeats = 5)
-            # mod <- train(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-            #              method = "rf", trControl = ctrl)
-            # all_predictions <- mod$pred
-            # predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
-            # 
+            ctrl <- trainControl(method = "repeatedcv", savePred=T, classProb=T, number = 10, repeats = 5)
+            mod <- train(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
+                         method = "rf", trControl = ctrl)
+            all_predictions <- mod$pred
+            predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
+            predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]
             # 
             # ctrl <- trainControl(method = "cv", savePred=T, classProb=T)
             # mod <- train(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
