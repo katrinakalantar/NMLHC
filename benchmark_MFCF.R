@@ -25,8 +25,6 @@ library(biomaRt)       # required for converting genenames
 library(GSA)           # required for reading the .gmt file for collapsing gene names
 
 
-
-
 source("/Users/kkalantar/Documents/Research/NMLHC/nmlhc_matlab2R_functions.R")
 source("/Users/kkalantar/Documents/Research/NMLHC/pylogger.R")  #sourced from: https://gist.github.com/jonathancallahan/3ed51265d3c6d56818458de95567d3ae
 
@@ -37,25 +35,21 @@ pca_cols <- c("turquoise","green","magenta")
 #
 
 EXPERIMENT_DIR <- "/Users/kkalantar/Documents/Research/NMLHC/EXPERIMENTS/Experiment_1/"
-
 parameters <- read_json(paste(EXPERIMENT_DIR, "parameters.json", sep=""), simplifyVector = TRUE)
 logger.setup(infoLog = paste(EXPERIMENT_DIR, "info.txt"))
 init_log(parameters)
-
 
 #
 # Open the Matlab server
 #
 
-options(matlab="/Applications/MATLAB_R2018a.app/bin/matlab")  # set the location to be used by all matlab calls
-matlab <- Matlab()
-if(isOpen(matlab)){ close(matlab) }      # if a previous server is open, close it now.
-Matlab$startServer()
-isOpen <- open(matlab)
-load_matlab_libraries()   # load the .m files required for running the analysis / estimation procedures
-
-logger.info(paste("MAIN - matlab server status ", toString(isOpen)))
-
+# options(matlab="/Applications/MATLAB_R2018a.app/bin/matlab")  # set the location to be used by all matlab calls
+# matlab <- Matlab()
+# if(isOpen(matlab)){ close(matlab) }      # if a previous server is open, close it now.
+# Matlab$startServer()
+# isOpen <- open(matlab)
+# load_matlab_libraries()   # load the .m files required for running the analysis / estimation procedures
+# logger.info(paste("MAIN - matlab server status ", toString(isOpen)))
 
 #
 # set global options, quit script if required parameters were not provided
@@ -74,7 +68,6 @@ feature_select = parameters$feature_select
 common_reg = parameters$common_reg                 # regularization type
 common_sn = parameters$common_sn      
 common_maxIter = parameters$common_maxIter         # max iterations for the algorithm
-
 
 # load all GEO datasets up front (bc this is slow) 
 list_of_geo_datasets <- list()     
@@ -110,8 +103,6 @@ CMs_CF = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$nam
 features_selected <- list() 
 
 
-
-
 #
 # Run analysis with given parameters, track results
 #
@@ -125,8 +116,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
       #                 draw train/test sets which will remain the same for all iterations of flipping...seems OK to me)
       DIM = DIM_RANGE[dimr]  # n_features
       DS_SIZE = DS_SIZE_RANGE[dsize]
-      #DIM = DIM_RANGE[1]
-      #DS_SIZE = DS_SIZE_RANGE[1]
+
       list_of_datasets <- list()
       for(x in rownames(parameters$datasets)){
         d <- parameters$datasets[x,]
@@ -148,86 +138,59 @@ for(dimr in seq(1:length(DIM_RANGE))){
         
         dataset <- list_of_datasets[[names(list_of_datasets)[d]]]
         
-        if(parameters$collapse_pathways){
-          g <- GSA.read.gmt(parameters$geneset_file)
-          
-          dataset$x <- convert_genenames(dataset$x)     # ensures that the gene names are converted prior to collapsing pathways even if that variable isn't set
-          dataset$xx <- convert_genenames(dataset$xx)
-          
-          print(head(dataset$x[,1:10]))
-          
-          
-          keep_pathways <- unique(unlist(lapply(parameters$pathway_keywords, function(x){return(g$geneset.names[grepl(x,g$geneset.names)])})))
-          
-          print(length(keep_pathways))
-          dataset$x <- collapse_pathways2(dataset$x, g, keep_pathways)
-          dataset$xx <- collapse_pathways2(dataset$xx, g, keep_pathways)
-          print(dim(dataset$x))
-          print(dim(dataset$xx))
-
-        }else if(parameters$convert_genenames){
-          dataset$x <- convert_genenames(dataset$x)
-          dataset$xx <- convert_genenames(dataset$xx)
-        }
-        
+        # if(parameters$collapse_pathways){
+        #   g <- GSA.read.gmt(parameters$geneset_file)    # this is the .gmt file used for any pathway analysis
+        #   dataset$x <- convert_genenames(dataset$x)     # convert the gene names prior to collapsing pathways, even if that variable isn't set in parameters.json
+        #   dataset$xx <- convert_genenames(dataset$xx)
+        #   keep_pathways <- unique(unlist(lapply(parameters$pathway_keywords, function(x){return(g$geneset.names[grepl(x,g$geneset.names)])})))
+        #   dataset$x <- collapse_pathways2(dataset$x, g, keep_pathways)
+        #   dataset$xx <- collapse_pathways2(dataset$xx, g, keep_pathways)
+        # }else if(parameters$convert_genenames){
+        #   dataset$x <- convert_genenames(dataset$x)
+        #   dataset$xx <- convert_genenames(dataset$xx)
+        # }
         
         features_selected[[names(list_of_datasets)[d]]] <- list("unflipped" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)),
                                                                 "flipped_wilcox" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)),
                                                                 "flipped_ttest" = create_new_feature_set(EXP_RANGE_J, EXP_RANGE, colnames(dataset$x)))
         
-        
         for(j in seq(1:length(EXP_RANGE_J))){
           for(i in seq(1:length(EXP_RANGE))){
             
-            
             # DO STUFF
-            #DIM = DIM_RANGE[dimr];  
-            #DS_SIZE = DS_SIZE_RANGE[dsize];
             flip_j = EXP_RANGE_J[j]
             flip_i = EXP_RANGE[i]
-            print(flip_i)
-            print(flip_j)
             
-            logger.info(msg = paste(c("MAIN - ITER - ", "DIM = ", DIM, ", DS_SIZE = ", DS_SIZE, ", DATASET = ", d,
-                                      ", flip_j = ", flip_j, ", flip_i = ", flip_i, ", K = ", k), collapse="" ))
+            logger.info(msg = paste(c("MAIN - ITER - ", "DATASET = ", d, ", K = ", k, ", flip_j = ", flip_j, ", flip_i = ", flip_i), collapse="" ))
             
-            # obtain the data to be used in this analyses
-            # dataset <- feval(DATASET_PARAM, as.numeric(CLS), as.numeric(DIM), as.numeric(DS_SIZE), 1000, 1, "gen")
-            
-
             Xt = dataset$x
+            Xt = Xt[,colSums(Xt) != 0]  # select only the genes with > 0 reads
             yt = dataset$y
+            
             Xs = dataset$xx
+            Xs = Xs[,colnames(Xt)]      # select only the genes that were present in the training set 
             ys = dataset$tt
             
-            a = standardise(Xt, Xs)
-            Xt = a[[1]]
-            Xs = a[[2]]
+            logger.info(msg = sprintf("MAIN - DATASET - TRAIN - N = %i samples; G1 = %i (%f), G2 = %i (%f)", length(yt), table(yt)[1], table(yt)[1]/length(yt), table(yt)[2], table(yt)[2]/length(yt)))
+            logger.info(msg = sprintf("MAIN - DATASET - TEST - N = %i samples; G1 = %i (%f), G2 = %i (%f)", length(ys), table(ys)[1], table(ys)[1]/length(ys), table(ys)[2], table(ys)[2]/length(ys)))
+            
+            #a = standardise(Xt, Xs)
+            #Xt = a[[1]]
+            #Xs = a[[2]]
+            Xt = scale(Xt)  # CHECK ON THIS
+            Xs = scale(Xs)  # CHECK ON THIS
             colnames(Xt) <- colnames(dataset$x)   # must have labels for the features_selection() function to work properly
             colnames(Xs) <- colnames(dataset$xx)
             rownames(Xt) <- rownames(dataset$x)
             rownames(Xs) <- rownames(dataset$xx)
             
-            a = inject_label_noise(yt, flip_i, flip_j)
+            #a = inject_label_noise(yt, flip_i, flip_j)
+            a = inject_label_noiseR(yt, flip_i, flip_j)
             yz = a[[1]]
             fdz = a[[2]]
             
-            
             pca_res <- prcomp(Xt)
             plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,cex=1.2, lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1])
-            
-            pca_form <- cbind(pca_res$x, as.factor(yz))
-            colnames(pca_form) <- c(colnames(pca_res$x), "yz")
-            pca_form <- as.data.frame(pca_form)
-            pca_form[, 'yz'] <- as.factor(pca_form[, 'yz'])
-            out <- HARF(yz~., data = pca_form, ntrees = 100)
-            print(out$remIdx)
-            logger.info(msg = "HARF removed:")
-            logger.info(msg = out$remIdx)
-            logger.info(msg = "HARF replaced:")
-            logger.info(msg = out$repIdx)
-            print(paste("Of all samples that were flipped, HARF correctly removed X:", (length(intersect(which(fdz > 0), out$remIdx))/ length(which(fdz > 0)))*100))
-            print(paste("Of all samples removed by HARF, X were correctly removed:", (length(intersect(which(fdz > 0), out$remIdx))/ length(out$remIdx))*100))
             
             shuff_idx <- shuffle(seq(1:dim(Xt)[1]))
             shuffled_x <- pca_res$x[shuff_idx,]
@@ -235,33 +198,33 @@ for(dimr in seq(1:length(DIM_RANGE))){
             shuffled_yz <- yz[shuff_idx]
             shuffled_fdz <- fdz[shuff_idx]
 
-            
-            #method options = 'lasso', 'glm', 'rf', 'kknn'
-
             # filter with PC
             filter <- make_ensemble(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-                               c("regLogistic", "rf"))#, "RRF")),"kknn", "svmLinear",
-            logger.info(msg=toString(colSums(filter$full_res)))
-            logger.info(msg = toString(colSums(filter$full_res)/length(shuffled_yz)))
+                               c("regLogistic", "rf", "knn", "svmLinear3", "nnet"),multiple = FALSE)
             
-            
-            
+            # # 
+            # # TESTING AREA - for testing individual algorithms on certain iterations of data
             # #
-            # # TESTING AREA
-            # #
-            ctrl <- trainControl(method = "repeatedcv", savePred=T, classProb=T, number = 10, repeats = 5)
-            mod <- train(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
-                         method = "rf", trControl = ctrl)
-            all_predictions <- mod$pred
-            predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
-            predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]
-            # 
-            # ctrl <- trainControl(method = "cv", savePred=T, classProb=T)
-            # mod <- train(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-            #              method = "rf", trControl = ctrl)
+            # ctrl <- trainControl(method = "repeatedcv", savePred=T, classProb=T, number = 10, repeats = 5)
+            # ctrl <- trainControl(method = "cv", savePred=T)#, classProb=T)
+            # mod <- train(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
+            #              method = "svmLinear3", trControl = ctrl)
             # all_predictions <- mod$pred
             # predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
-            # 
+            # predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]
+            # sum(predictions_to_use$pred == predictions_to_use$obs)/length(predictions_to_use$pred)
+            # treebag = 98% accurate
+            # svmPoly = 56% accurate
+            # svmLinear = 51% accurate
+            # lssvmLinear  = 56% accurate
+            # lssvmPoly  = 57% accurate
+            # lda didn't work - error
+            # loclda didn't work
+            # nnet = 100% accurate
+            # knn = 100% accurate
+            # kknn = 55% accurate
+            # svmLinearWeights2 = 100 % accurate
+            # svmLinear3 = 100% accurate
             # #
             # # END TESTING AREA
             # #
@@ -274,14 +237,14 @@ for(dimr in seq(1:length(DIM_RANGE))){
             
             #filter <- make_superlearner(as.data.frame(pca_res$x), yz, 10, list("SL.randomForest", "SL.glmnet", "SL.caret.rpart")) #"SL.svm", , "SL.svm"
             if(length(table(shuffled_fdz)) > 1){
-              logger.info(msg = "MAJORIFY FILTER")
               a <- flag_flipped_samples(filter$MF, shuffled_fdz)
-              logger.info(msg = a)
+              logger.info(msg = sprintf("MAIN - ALGORITHM - ENSEMBLE - MF - %s", toString(a$table)))
+              #logger.info(msg = a)
               CMs_MF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
               
-              logger.info(msg = "CONSENSUS FILTER")
               a <- flag_flipped_samples(filter$CF, shuffled_fdz)
-              logger.info(msg = a)
+              logger.info(msg = sprintf("MAIN - ALGORITHM - ENSEMBLE - CF - %s", toString(a$table)))
+              #logger.info(msg = a)
               CMs_CF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
             }else{
               CMs_MF[dimr, dsize, d, k, j, i] = paste(c(1,1,1,1), collapse="_")
@@ -292,73 +255,10 @@ for(dimr in seq(1:length(DIM_RANGE))){
             }
             
             
-            # DO feature selection on the original dataset, save features for evaluation
-            rfs_unflipped <- run_FS(Xt, yt, "wilcoxon")
-            features_selected[[names(list_of_datasets)[d]]][["unflipped"]][k,j,i, ] <- rownames(rfs_unflipped)
-            # Do feature selection on the modified/flipped dataset, save features for evaluation
-            rfs_flipped <- run_FS(Xt, yz, "wilcoxon")
-            features_selected[[names(list_of_datasets)[d]]][["flipped_wilcox"]][k,j,i, ] <- rownames(rfs_flipped)
-            rfs_flipped_ttest <- run_FS(Xt, yz, "ttest")  
-            features_selected[[names(list_of_datasets)[d]]][["flipped_ttest"]][k,j,i, ] <- rownames(rfs_flipped_ttest)
-            
             # create a new winit for training the noised model
             winit = randn(dim(Xt)[2] + 1, 1)
             
-            # # rLR (using true labels) to give baseline of number of features
-            # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-            # options$estG = FALSE
-            # options$regFunc = common_reg
-            # options$sn = common_sn
-            # ginit = cbind(c(1,0),c(0,1))
-            # result = run_rlr("rlr", winit, ginit, Xt, yt, options, Xs, ys)
-            # 
-            # # rLR (using flipped labels) with no estimation of G
-            # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-            # options$estG = FALSE
-            # options$regFunc = common_reg
-            # options$sn = common_sn
-            # result = run_rlr("rlr", winit, cbind(c(1,0),c(0,1)), Xt, yz, options, Xs, ys)
-            # err_lr[dimr, dsize, d, k, j, i] = result$error
-            # auc_lr[dimr, dsize, d, k, j, i] = result$auc$auc
-            # 
-            # # rLR (using flipped labels) with estimation of G 
-            # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-            # options$estG = TRUE;
-            # options$regFunc = common_reg;
-            # options$sn = common_sn;
-            # rr = .2;
-            # # result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys) # this was the original fn
-            # result <- NULL
-            # 
-            # result <- run_rlr("rlr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
-            # logger.info(msg = paste("CHECK RESULT of tryCatch", result$error))
-            # if(!is.null(result)){
-            #   err_rlr[dimr, dsize, d, k, j, i] = result$error
-            #   auc_rlr[dimr, dsize, d, k, j, i] = result$auc$auc
-            # }
-            
-            
-            # # gammaLR (using flipped labels) with estimation of G 
-            # options <- list(regFunc = common_reg, sn = common_sn, maxIter = common_maxIter)
-            # options$estG = TRUE;
-            # rr = .2;
-            # result = run_rlr("gammalr", winit, cbind(c(1-rr, rr), c(rr, 1-rr)), Xt, yz, options, Xs, ys)
-            # err_gammalr[[k]][i,j] = result$error
-            # auc_gammalr[[k]][i,j] = result$auc
-            
-            
-            # run the EM algorithm (R implementation)
-            
-            
-            # # run standard LASSO regression
-            # # with true labels
-            # model <- glmnet(Xt, as.numeric(yt), family="binomial", alpha = 1) 
-            # model$beta[,ncol(model$beta)-3]  # NOTE: SHOULD GET LAMBDA PARAM BY CROSS-VALIDATION, just selected third-to-last lambda row randomly for now
-            # # with flipped labels
-            # model <- glmnet(Xt, as.numeric(yz), family="binomial", alpha = 1) 
-            # model$beta[,ncol(model$beta)-3]  # NOTE: SHOULD GET LAMBDA PARAM BY CROSS-VALIDATION, just selected third-to-last lambda row randomly for now
-            
-            
+
             
           }
         }
@@ -383,7 +283,7 @@ my_palette <- colorRampPalette(c("purple3", "white"))(n = 1001)
 my_palette2 <- colorRampPalette(c("white", "green4"))(n = 1001)    # continuous color scale for heatmaps
 discrete_pal <- brewer.pal(6, "Spectral")                          # color palette for discrete variables - line plots for different conditions
 
-close(matlab)
+# close(matlab)
 
 # THIS IS A HEATMAP PLOT
 plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "simulate_mbal", "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
@@ -420,5 +320,5 @@ overlap <- plot_feature_similarity(features_selected, c(100, 500, 1000, 2500, 50
 
 
 
-plot_confusion_matrix(CMs_MF, colorRampPalette(c("dodgerblue", "white"))(n = 101))
-plot_confusion_matrix(CMs_CF, colorRampPalette(c("purple", "white"))(n = 101))
+plot_confusion_matrix(CMs_MF, colorRampPalette(c("white","dodgerblue"))(n = 401), max=400)
+plot_confusion_matrix(CMs_CF, colorRampPalette(c("white","purple"))(n = 301), max = 300)

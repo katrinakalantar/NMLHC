@@ -46,7 +46,7 @@ collapse_pathways2 <- function(data, gmt_file, keep_pathways){
 }
 
 
-plot_confusion_matrix <- function(CM, colorpal = colorRampPalette(c("purple3", "white"))(n = 101) ){
+plot_confusion_matrix <- function(CM, colorpal = colorRampPalette(c("purple3", "white"))(n = 201), max=300 ){
   a <- CM[1,1,1,1,,]
   gl <- 0
   plot_list <- list()
@@ -60,7 +60,7 @@ plot_confusion_matrix <- function(CM, colorpal = colorRampPalette(c("purple3", "
       colnames(m) <- c("REF_0", "REF_1")
       rownames(m) <- c("PRED_0", "PRED_1")
       hmp <- pheatmap(m, cluster_rows = FALSE, cluster_cols = FALSE, display_numbers = TRUE,col=colorpal,
-                      border_color = "black", fontsize_number = 10, cellheight=25, cellwidth=25, breaks = seq(0,1,by=.01))
+                      border_color = "black", fontsize_number = 10, cellheight=25, cellwidth=25, breaks = seq(0,max,by=1))
       plot_list[[gl]] <- hmp[[4]]
     }
   }
@@ -69,14 +69,24 @@ plot_confusion_matrix <- function(CM, colorpal = colorRampPalette(c("purple3", "
   g <- do.call(grid.arrange, plot_list)
 }
 
+
+#' Generate predictions based on an ensemble of classification algorithms; 
+#' 
+#' @param x training data; matrix of features/covariates used for prediction.
+#' @param y training labels; must be factor of non-integer values i.e. "one"/"two" instead of 1/2
+#' @param library A vector of strings indicating the algorithms to be included in the ensemble. Available algorithms can be queried here: https://topepo.github.io/caret/available-models.html
+#' @param multiple Boolean value indicating whether to run multiple iterations of cross-validation to generate ensemble predictions; default = TRUE, with 5 iterations 
+#' @return A list containing: "MF", samples to be kept by majority filter; "CF", samples to be kept by consensus filter, "full_res", the full list of discordant predictions
+#' @examples
+#' make_ensemble(x, y, c("regLogistic", "rf", "knn", "svmLinear3", "nnet"), multiple = TRUE)
 make_ensemble <- function(x, y, library, multiple = TRUE){
   list_of_results <- list()
   for(algorithmL in library){
-    ctrl <- trainControl(method = "cv", savePred=T, classProb=T)
+    ctrl <- trainControl(method = "cv", savePred=T) #, classProb=T
     
     if(multiple){
       print("generating ensemble with repeats")
-      ctrl <- trainControl(method = "repeatedcv", savePred=T, classProb=T, number = 10, repeats = 5)
+      ctrl <- trainControl(method = "repeatedcv", savePred=T, number = 10, repeats = 5) #classProb=T, 
     }
     
     mod <- train(x, y, method = algorithmL, trControl = ctrl)
@@ -93,11 +103,10 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
     }
     
     concordant <- predictions_to_use$pred == predictions_to_use$obs
-    print(algorithmL)
-    print(sum(predictions_to_use$pred == predictions_to_use$obs)/length(predictions_to_use$obs))
+    accuracy <- sum(predictions_to_use$pred == predictions_to_use$obs)/length(predictions_to_use$obs)
+    logger.info(msg = sprintf("MAIN - ALGORITHM - ENSEMBLE - %s, accuracy = %f", algorithmL, accuracy))
+
     discordant <- predictions_to_use$pred != predictions_to_use$obs
-    
-    print(sum(predictions_to_use$pred != predictions_to_use$obs)/length(predictions_to_use$obs))
     
     list_of_results[[algorithmL]] = discordant
   }
@@ -113,9 +122,14 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
   return(list("MF" = keep_majority_filter, "CF" = keep_consensus_filter, "full_res" = r) )#, "P" = p))
 }
 
-
+#' Evaluate the performance of the ensemble for identifying known flipped samples
+#' 
+#' @param keeping array of TRUE/FALSE values indicating whether a sample was kept after filtering
+#' @param fdz array of values -1/1 indicating whether a sample has its true label (-1) or was flipped (1)
+#' @return A confusionMatrix object
+#' @examples
+#' flag_flipped_samples(filter$MF, shuffled_fdz)
 flag_flipped_samples <- function(keeping, fdz){
-  
   cm <- confusionMatrix(factor(as.integer(keeping)), factor(as.integer(fdz < 0)), positive = "1")
   print(cm)
   plot(cm$table)
@@ -728,7 +742,6 @@ grab_grob <- function(){
 
 
 create_new_result_set <- function(DIM_RANGE, DS_SIZE_RANGE, DATASETS, EXP_RANGE_J, EXP_RANGE){
-  logger.info(msg="FUNCTION - STATUS - create_new_result_set()")
   result_array <- array(
     rep(0, length(DIM_RANGE) * length(DS_SIZE_RANGE) * length(DATASETS) * ITER * length(EXP_RANGE_J) * length(EXP_RANGE)),
     dim = c(length(DIM_RANGE), length(DS_SIZE_RANGE), length(DATASETS), ITER, length(EXP_RANGE_J), length(EXP_RANGE)),
@@ -940,6 +953,37 @@ inject_label_noise <- function(yt, flip_i, flip_j){
 }
 
 
+inject_label_noiseR <- function(y, flip_i, flip_j){
+  
+  fd <- rep(1, length(y)) * -1
+  yz <- castLabel(y, -1)
+  print("yz")
+  print(yz)
+  y <- castLabel(y, 2)
+  print('y')
+  print(y)
+  
+  flip_rate <- c(flip_i, flip_j)
+  
+  for(i in c(1,2)){
+    print(i)
+    prob = rand(length(yz),1)
+    idx = intersect(which(y==i), which(prob <= flip_rate[i]))
+    print(idx)
+    print("yz[idx]")
+    print(yz[idx])
+    yz[idx] = yz[idx] * -1
+    print(yz[idx])
+    fd[idx] = fd[idx] * -1
+  }
+ 
+  yz = castLabel(yz, 2)
+  return(list("yz" = yz, "fd" = fd))
+}
+
+
+
+
 standardise <- function(Xt, Xs){
   
   setVariable(matlab, Xt = Xt)
@@ -977,3 +1021,6 @@ addbias <- function(x){
   x = cbind(matrix(rep(1,nrow), ncol=1), x)
   return(x)  
 }
+
+
+
