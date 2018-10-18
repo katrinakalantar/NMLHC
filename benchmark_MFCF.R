@@ -40,18 +40,6 @@ logger.setup(infoLog = paste(EXPERIMENT_DIR, "info.txt"))
 init_log(parameters)
 
 #
-# Open the Matlab server
-#
-
-# options(matlab="/Applications/MATLAB_R2018a.app/bin/matlab")  # set the location to be used by all matlab calls
-# matlab <- Matlab()
-# if(isOpen(matlab)){ close(matlab) }      # if a previous server is open, close it now.
-# Matlab$startServer()
-# isOpen <- open(matlab)
-# load_matlab_libraries()   # load the .m files required for running the analysis / estimation procedures
-# logger.info(paste("MAIN - matlab server status ", toString(isOpen)))
-
-#
 # set global options, quit script if required parameters were not provided
 # 
 
@@ -156,35 +144,27 @@ for(dimr in seq(1:length(DIM_RANGE))){
         
         for(j in seq(1:length(EXP_RANGE_J))){
           for(i in seq(1:length(EXP_RANGE))){
-            
-            # DO STUFF
+
             flip_j = EXP_RANGE_J[j]
             flip_i = EXP_RANGE[i]
             
-            logger.info(msg = paste(c("MAIN - ITER - ", "DATASET = ", d, ", K = ", k, ", flip_j = ", flip_j, ", flip_i = ", flip_i), collapse="" ))
+            logger.info(msg = paste(c("MAIN - ITER - ", "DATA = ", d, ", K = ", k, ", flip_j = ", flip_j, ", flip_i = ", flip_i), collapse="" ))
             
             Xt = dataset$x
             Xt = Xt[,colSums(Xt) != 0]  # select only the genes with > 0 reads
+            feature_names <- colnames(Xt)
             yt = dataset$y
             
             Xs = dataset$xx
             Xs = Xs[,colnames(Xt)]      # select only the genes that were present in the training set 
             ys = dataset$tt
             
-            logger.info(msg = sprintf("MAIN - DATASET - TRAIN - N = %i samples; G1 = %i (%f), G2 = %i (%f)", length(yt), table(yt)[1], table(yt)[1]/length(yt), table(yt)[2], table(yt)[2]/length(yt)))
-            logger.info(msg = sprintf("MAIN - DATASET - TEST - N = %i samples; G1 = %i (%f), G2 = %i (%f)", length(ys), table(ys)[1], table(ys)[1]/length(ys), table(ys)[2], table(ys)[2]/length(ys)))
-            
-            #a = standardise(Xt, Xs)
-            #Xt = a[[1]]
-            #Xs = a[[2]]
+            logger.info(msg = sprintf("MAIN - DATA - TRAIN - N = %i samples; G1 = %i (%f), G2 = %i (%f)", length(yt), table(yt)[1], table(yt)[1]/length(yt), table(yt)[2], table(yt)[2]/length(yt)))
+            logger.info(msg = sprintf("MAIN - DATA - TEST - N = %i samples; G1 = %i (%f), G2 = %i (%f)", length(ys), table(ys)[1], table(ys)[1]/length(ys), table(ys)[2], table(ys)[2]/length(ys)))
+
             Xt = scale(Xt)  # CHECK ON THIS
             Xs = scale(Xs)  # CHECK ON THIS
-            colnames(Xt) <- colnames(dataset$x)   # must have labels for the features_selection() function to work properly
-            colnames(Xs) <- colnames(dataset$xx)
-            rownames(Xt) <- rownames(dataset$x)
-            rownames(Xs) <- rownames(dataset$xx)
             
-            #a = inject_label_noise(yt, flip_i, flip_j)
             a = inject_label_noiseR(yt, flip_i, flip_j)
             yz = a[[1]]
             fdz = a[[2]]
@@ -228,23 +208,13 @@ for(dimr in seq(1:length(DIM_RANGE))){
             # #
             # # END TESTING AREA
             # #
-            
-            
-            
-            # filter without PC
-            #filter <- make_ensemble(shuffled_Xt, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-            #                   c("svmLinear","kknn","rf"))
-            
-            #filter <- make_superlearner(as.data.frame(pca_res$x), yz, 10, list("SL.randomForest", "SL.glmnet", "SL.caret.rpart")) #"SL.svm", , "SL.svm"
+
             if(length(table(shuffled_fdz)) > 1){
               a <- flag_flipped_samples(filter$MF, shuffled_fdz)
-              logger.info(msg = sprintf("MAIN - ALGORITHM - ENSEMBLE - MF - %s", toString(a$table)))
-              #logger.info(msg = a)
+              logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - %s", toString(a$table)))
               CMs_MF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
-              
               a <- flag_flipped_samples(filter$CF, shuffled_fdz)
-              logger.info(msg = sprintf("MAIN - ALGORITHM - ENSEMBLE - CF - %s", toString(a$table)))
-              #logger.info(msg = a)
+              logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - CF - %s", toString(a$table)))
               CMs_CF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
             }else{
               CMs_MF[dimr, dsize, d, k, j, i] = paste(c(1,1,1,1), collapse="_")
@@ -253,7 +223,6 @@ for(dimr in seq(1:length(DIM_RANGE))){
               logger.info(msg = paste("MF: ", toString(table(filter$MF))))
               logger.info(msg = paste("CF: ", toString(table(filter$CF))))
             }
-            
             
             # create a new winit for training the noised model
             winit = randn(dim(Xt)[2] + 1, 1)
@@ -285,21 +254,21 @@ discrete_pal <- brewer.pal(6, "Spectral")                          # color palet
 
 # close(matlab)
 
-# THIS IS A HEATMAP PLOT
-plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "simulate_mbal", "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
-plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
-
-plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = NULL, "EXP_RANGE" = NULL, "EXP_RANGE_J" = .2, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
-plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
-
-plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data1", "EXP_RANGE" = NULL, "EXP_RANGE_J" = .2, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
-plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
-
-# THIS IS A LINE PLOT
-plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data1", "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file2", sep=""), "performance_metric" = "AUC")
-plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
-plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data2", "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file3", sep=""), "performance_metric" = "AUC")
-plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
+# # THIS IS A HEATMAP PLOT
+# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "simulate_mbal", "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
+# plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
+# 
+# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = NULL, "EXP_RANGE" = NULL, "EXP_RANGE_J" = .2, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
+# plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
+# 
+# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data1", "EXP_RANGE" = NULL, "EXP_RANGE_J" = .2, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
+# plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
+# 
+# # THIS IS A LINE PLOT
+# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data1", "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file2", sep=""), "performance_metric" = "AUC")
+# plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
+# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data2", "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file3", sep=""), "performance_metric" = "AUC")
+# plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
 
 
 # 
@@ -316,7 +285,7 @@ plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_ga
 # length(intersect(rownames(head(rfs_unflipped$res, n=1000)),union( rownames(head(rfs_flipped_ttest$res, n=1000)),rownames(head(rfs_flipped_roc$res, n=1000)))))/1000
 # length(union(rownames(head(rfs_flipped_ttest$res, n=1000)),rownames(head(rfs_flipped_roc$res, n=1000))))
 
-overlap <- plot_feature_similarity(features_selected, c(100, 500, 1000, 2500, 5000, 10000))#, "fileroot" = paste(EXPERIMENT_DIR, "features_byflip", sep=""))
+# overlap <- plot_feature_similarity(features_selected, c(100, 500, 1000, 2500, 5000, 10000))#, "fileroot" = paste(EXPERIMENT_DIR, "features_byflip", sep=""))
 
 
 
