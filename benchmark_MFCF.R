@@ -172,14 +172,10 @@ for(dimr in seq(1:length(DIM_RANGE))){
             pca_res <- prcomp(Xt)
             plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,cex=1.2, lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1])
             
-            shuff_idx <- shuffle(seq(1:dim(Xt)[1]))
-            shuffled_x <- pca_res$x[shuff_idx,]
-            shuffled_Xt <- Xt[shuff_idx,]
-            shuffled_yz <- yz[shuff_idx]
-            shuffled_fdz <- fdz[shuff_idx]
+            Xt_pcatrans <- pca_res$x
 
             # filter with PC
-            filter <- make_ensemble(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+            filter <- make_ensemble(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
                                c("regLogistic", "rf", "knn", "svmLinear3", "nnet"),multiple = FALSE)
             
             # # 
@@ -187,7 +183,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
             # #
             # ctrl <- trainControl(method = "repeatedcv", savePred=T, classProb=T, number = 10, repeats = 5)
             # ctrl <- trainControl(method = "cv", savePred=T)#, classProb=T)
-            # mod <- train(shuffled_x, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
+            # mod <- train(Xt_pcatrans, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
             #              method = "svmLinear3", trControl = ctrl)
             # all_predictions <- mod$pred
             # predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
@@ -208,12 +204,17 @@ for(dimr in seq(1:length(DIM_RANGE))){
             # #
             # # END TESTING AREA
             # #
+            
+            # in this plot, the larger points are the ones that get kept.
+            plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
+                 cex = c(.5, 2.0)[as.integer(filter$MF) + 1])
+            
 
-            if(length(table(shuffled_fdz)) > 1){
-              a <- flag_flipped_samples(filter$MF, shuffled_fdz)
+            if(length(table(fdz)) > 1){
+              a <- flag_flipped_samples(filter$MF, fdz)
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - %s", toString(a$table)))
               CMs_MF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
-              a <- flag_flipped_samples(filter$CF, shuffled_fdz)
+              a <- flag_flipped_samples(filter$CF, fdz)
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - CF - %s", toString(a$table)))
               CMs_CF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
             }else{
@@ -225,10 +226,57 @@ for(dimr in seq(1:length(DIM_RANGE))){
             }
             
             # create a new winit for training the noised model
-            winit = randn(dim(Xt)[2] + 1, 1)
+            # winit = randn(dim(Xt)[2] + 1, 1)
             
+            idx_keep <- which(filter$MF)
+            Xt_confident <- Xt[idx_keep,]
+            yz_confident <- yz[idx_keep]
+            
+            idx_sub <- which(fdz > 0)
+            Xt_sub_unflipped <- Xt[idx_sub,]
+            yz_sub_unflipped <- yt[idx_sub,]
+            
+            
+            # ctrl <- trainControl(method = "cv", savePred=T, classProb=T)
+            # mod <- train(Xt_confident, y = unlist(lapply(yz_confident, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+            #              method = "regLogistic", trControl = ctrl)
+            # 
+            # all_predictions <- mod$pred
+            # predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
+            # predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]
+            # roc_cv <- pROC::roc(yz_confident, predictions_to_use$pred)
+            # acc_cv <- sum(mod$pred$pred == mod$pred$obs)/length(mod$pred$pred)
+            # 
+            # Liblinear(Xt_confident, y = unlist(lapply(yz_confident, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
+            #           cost = mod$bestTune$cost, epsilon = mod$bestTune$epsilon)
+            
+            # clean model
+            CV <- cv.glmnet(Xt_confident, y = (yz_confident == 2), alpha = .5)
+            model_clean <- glmnet(Xt_confident, y = (yz_confident == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
+            res_train <- predict(model_clean, Xt_confident, type = "response")
+            roc_train <- pROC::roc(yz_confident, res_train[,1])
+            res_test <- predict(model_clean, Xs, type = "response")
+            roc_test <- pROC::roc(ys, res_test[,1])
+            auc_rlr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
+            
+            # subset unflipped model
+            CV <- cv.glmnet(Xt_sub_unflipped, y = (yz_sub_unflipped == 2), alpha = .5)
+            model_sub <- glmnet(Xt_confident, y = (yz_sub_unflipped == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
+            res_train <- predict(model_sub, Xt_sub_unflipped, type = "response")
+            roc_train <- pROC::roc(yz_sub_unflipped, res_train[,1])
+            res_test <- predict(model_sub, Xs, type = "response")
+            roc_test <- pROC::roc(ys, res_test[,1])
+            auc_gammalr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
 
-            
+            # noisy model
+            CV <- cv.glmnet(Xt, y = (yz == 2), alpha = .5)
+            model_full <- glmnet(Xt, y = (yz == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
+            res_train <- predict(model_full, Xt, type = "response")
+            roc_train <- pROC::roc(yz, res_train[,1])
+            res_test <- predict(model_full, Xs, type = "response")
+            roc_test <- pROC::roc(ys, res_test[,1])
+            auc_lr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
+              
           }
         }
       }
@@ -291,3 +339,8 @@ discrete_pal <- brewer.pal(6, "Spectral")                          # color palet
 
 plot_confusion_matrix(CMs_MF, colorRampPalette(c("white","dodgerblue"))(n = 401), max=400)
 plot_confusion_matrix(CMs_CF, colorRampPalette(c("white","purple"))(n = 301), max = 300)
+
+
+plot_params <- list("DS_SIZE_RANGE" = 2000, "DIM_RANGE" = 200, "DATASET" = "DATASETS_viral_bacterial", "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
+plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
+
