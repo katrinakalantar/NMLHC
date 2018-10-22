@@ -150,14 +150,22 @@ for(dimr in seq(1:length(DIM_RANGE))){
             
             logger.info(msg = paste(c("MAIN - ITER - ", "DATA = ", d, ", K = ", k, ", flip_j = ", flip_j, ", flip_i = ", flip_i), collapse="" ))
             
+            print("A")
+            
             Xt = dataset$x
             Xt = Xt[,colSums(Xt) != 0]  # select only the genes with > 0 reads
-            feature_names <- colnames(Xt)
             yt = dataset$y
             
             Xs = dataset$xx
-            Xs = Xs[,colnames(Xt)]      # select only the genes that were present in the training set 
+            Xs = Xs[,colSums(Xs) != 0]  # select only the genes with > 0 reads
             ys = dataset$tt
+            
+            # use only features with > 0 reads in training set and test set
+            feature_names <- intersect(colnames(Xt), colnames(Xs))
+            Xs = Xs[,feature_names]      # select only the genes that were present in the training set 
+            Xt = Xt[,feature_names]
+            
+            print("B")
             
             logger.info(msg = sprintf("MAIN - DATA - TRAIN - N = %i samples; G1 = %i (%f), G2 = %i (%f)", length(yt), table(yt)[1], table(yt)[1]/length(yt), table(yt)[2], table(yt)[2]/length(yt)))
             logger.info(msg = sprintf("MAIN - DATA - TEST - N = %i samples; G1 = %i (%f), G2 = %i (%f)", length(ys), table(ys)[1], table(ys)[1]/length(ys), table(ys)[2], table(ys)[2]/length(ys)))
@@ -169,14 +177,20 @@ for(dimr in seq(1:length(DIM_RANGE))){
             yz = a[[1]]
             fdz = a[[2]]
             
+            print("C")
+            
             pca_res <- prcomp(Xt)
             plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,cex=1.2, lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1])
             
             Xt_pcatrans <- pca_res$x
+            
+            print("D")
 
             # filter with PC
             filter <- make_ensemble(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
                                c("regLogistic", "rf", "knn", "svmLinear3", "nnet"),multiple = FALSE)
+            
+            print("E")
             
             # # 
             # # TESTING AREA - for testing individual algorithms on certain iterations of data
@@ -209,8 +223,12 @@ for(dimr in seq(1:length(DIM_RANGE))){
             plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
                  cex = c(.5, 2.0)[as.integer(filter$MF) + 1])
             
+            
+            print("E")
+            
 
             if(length(table(fdz)) > 1){
+              print("F")
               a <- flag_flipped_samples(filter$MF, fdz)
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - %s", toString(a$table)))
               CMs_MF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
@@ -218,6 +236,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - CF - %s", toString(a$table)))
               CMs_CF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
             }else{
+              print("G")
               CMs_MF[dimr, dsize, d, k, j, i] = paste(c(1,1,1,1), collapse="_")
               CMs_CF[dimr, dsize, d, k, j, i] = paste(c(1,1,1,1), collapse="_")
               logger.info(msg = "flip_i and flip_j = 0, so no QC metric available:")
@@ -228,13 +247,24 @@ for(dimr in seq(1:length(DIM_RANGE))){
             # create a new winit for training the noised model
             # winit = randn(dim(Xt)[2] + 1, 1)
             
+            print("H")
+            
             idx_keep <- which(filter$MF)
             Xt_confident <- Xt[idx_keep,]
             yz_confident <- yz[idx_keep]
             
-            idx_sub <- which(fdz > 0)
-            Xt_sub_unflipped <- Xt[idx_sub,]
-            yz_sub_unflipped <- yt[idx_sub,]
+            print("I")
+            
+            # idx_sub <- which(fdz < 0)
+            # Xt_sub_unflipped <- Xt[idx_sub,]
+            # yz_sub_unflipped <- yz[idx_sub,]
+            
+            idx_sub <- shuffle(seq(1:dim(Xt)[1]))[1:round(dim(Xt)[1]/2)] 
+            Xt_sub <- Xt[idx_sub,]
+            yt_sub <- yt[idx_sub,]
+            
+            
+            print("J")
             
             
             # ctrl <- trainControl(method = "cv", savePred=T, classProb=T)
@@ -254,20 +284,33 @@ for(dimr in seq(1:length(DIM_RANGE))){
             CV <- cv.glmnet(Xt_confident, y = (yz_confident == 2), alpha = .5)
             model_clean <- glmnet(Xt_confident, y = (yz_confident == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
             res_train <- predict(model_clean, Xt_confident, type = "response")
-            roc_train <- pROC::roc(yz_confident, res_train[,1])
+            roc_train <- pROC::roc((yz_confident == 2), res_train[,1])
             res_test <- predict(model_clean, Xs, type = "response")
-            roc_test <- pROC::roc(ys, res_test[,1])
+            roc_test <- pROC::roc((ys==2), res_test[,1])
             auc_rlr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
             
+            print("K")
+            
+            # # subset unflipped model
+            # CV <- cv.glmnet(Xt_sub_unflipped, y = (yz_sub_unflipped == 2), alpha = .5)
+            # model_sub <- glmnet(Xt_sub_unflipped, y = (yz_sub_unflipped == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
+            # res_train <- predict(model_sub, Xt_sub_unflipped, type = "response")
+            # roc_train <- pROC::roc(yz_sub_unflipped, res_train[,1])
+            # res_test <- predict(model_sub, Xs, type = "response")
+            # roc_test <- pROC::roc(ys, res_test[,1])
+            # auc_gammalr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
+            
             # subset unflipped model
-            CV <- cv.glmnet(Xt_sub_unflipped, y = (yz_sub_unflipped == 2), alpha = .5)
-            model_sub <- glmnet(Xt_confident, y = (yz_sub_unflipped == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
-            res_train <- predict(model_sub, Xt_sub_unflipped, type = "response")
-            roc_train <- pROC::roc(yz_sub_unflipped, res_train[,1])
+            CV <- cv.glmnet(Xt_sub, y = (yt_sub == 2), alpha = .5)
+            model_sub <- glmnet(Xt_sub, y = (yt_sub == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
+            res_train <- predict(model_sub, Xt_sub, type = "response")
+            roc_train <- pROC::roc(yt_sub, res_train[,1])
             res_test <- predict(model_sub, Xs, type = "response")
             roc_test <- pROC::roc(ys, res_test[,1])
             auc_gammalr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
 
+            print("L")
+            
             # noisy model
             CV <- cv.glmnet(Xt, y = (yz == 2), alpha = .5)
             model_full <- glmnet(Xt, y = (yz == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
@@ -277,6 +320,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
             roc_test <- pROC::roc(ys, res_test[,1])
             auc_lr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
               
+            
+            print("M")
           }
         }
       }

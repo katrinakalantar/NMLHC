@@ -104,7 +104,7 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
     
     concordant <- predictions_to_use$pred == predictions_to_use$obs
     accuracy <- sum(predictions_to_use$pred == predictions_to_use$obs)/length(predictions_to_use$obs)
-    logger.info(msg = sprintf("MAIN - ALGORITHM - ENSEMBLE - %s, accuracy = %f", algorithmL, accuracy))
+    logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - %s, accuracy = %f", algorithmL, accuracy))
 
     discordant <- predictions_to_use$pred != predictions_to_use$obs
     
