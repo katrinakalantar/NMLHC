@@ -24,9 +24,12 @@ affy_probe_to_gene_symbol <- function(probe_id, GPL, sel.columns="SYMBOL"){
   }else if(GPL==571 || GPL=="GPL571"){
     require(hgu133a2.db)
     OUT <- select(hgu133a2.db, PROBES, sel.columns)
-  }else if(GPL=="ILMNv3"){
+  }else if(GPL==6947 || GPL == "GPL6947"){
     require(illuminaHumanv3.db)
     OUT <- select(illuminaHumanv3.db, PROBES, sel.columns)
+  }else if(GPL==10558 || GPL == "GPL10558"){
+    require(illuminaHumanv4.db)
+    OUT <- select(illuminaHumanv4.db, PROBES, sel.columns)
   }
   return(OUT)
 }
@@ -82,11 +85,15 @@ detect_genecnt_platform <- function(data, method="mean"){
     library(hgu133a2.db)
     GPL="GPL571"
     print ("Guess it's hgu133a2")
-  }else if(num.genes == 48803){
+  }else if(num.genes == 48803 || num.genes == 37804){
     library("illuminaHumanv3.db")
-    GPL="ILMNv3"
+    GPL="GPL6947"
     print("Guess it's ILMNv3")
-  } else{
+  }else if(num.genes == 47323 || num.genes == 47300){
+    library("illuminaHumanv4.db")
+    GPL="GPL10558"
+    print("Guess it's ILMNv4")
+  }else{
     print ("Guess its normal RNA-Seq, do nothing")
     return(data)
   }
@@ -127,7 +134,7 @@ detect_genecnt_platform <- function(data, method="mean"){
     dplyr::filter(!is.na(SYMBOL)) %>%
     as.data.frame() %>% 
     setDF %>%
-    magrittr::set_rownames(.$SYMBOL) %>%
+    magrittr::set_rownames(make.names(.$SYMBOL, unique=TRUE)) %>%
     '['(, !(colnames(.) %in% c("RowExp", "SYMBOL")))
   
   return(final.data)

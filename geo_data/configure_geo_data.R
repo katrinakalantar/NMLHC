@@ -1,4 +1,10 @@
 
+source("/Users/kkalantar/Documents/Research/NMLHC/microarray_format_utils.R")
+library(hgu133a2.db)           # for conversion from probe IDs to gene IDs
+library(hgu133plus2.db)        # ""
+library(illuminaHumanv4.db)    # ""
+library(sva)                   # for COMBAT batch correction
+
 
 setwd('/Users/kkalantar/Documents/Research/NMLHC/geo_data')
 
@@ -81,5 +87,76 @@ saveRDS( TBBLOOD_DATASET, "TBBLOOD_DATASET.rds" )
   
 
 #sub <- subset_known_dataset(ANCESTRY_DATASET, "Listeria", "Non-infected", "characteristics_ch1.2")
+
+
+
+
+
+#
+# Tsalik original data
+#
+
+library(sva)
+# variable: OG$characteristics_ch1.1; viral, bacterial, non-infectious
+tsalik_OG <- GEOquery::getGEO(filename = "/Users/kkalantar/Documents/Research/NMLHC/geo_data/GSE63990_series_matrix.txt")
+batch_corrected_OG <- ComBat(exprs(tslik_OG),tslik_OG$`batch:ch1`)
+genenames_batch_corrected_OG <- detect_genecnt_platform(batch_corrected_OG)
+
+TSALIK_ORIGINAL <- ExpressionSet(assayData = as.matrix(genenames_batch_corrected_OG), phenoData = AnnotatedDataFrame(pData(tsalik_OG)) )
+saveRDS(TSALIK_ORIGINAL, "/Users/kkalantar/Documents/Research/NMLHC/geo_data/TSALIK_ORIGINAL.rds")
+
+
+
+
+
+# Each infectious agent represents a unique combination of pathogen-associated molecular patterns that interact with specific 
+# pattern-recognition receptors expressed on immune cells. Therefore, we surmised that the blood immune cells of individuals with 
+# different infections might bear discriminative transcriptional signatures. Gene expression profiles were obtained for 131 
+# peripheral blood samples from pediatric patients with acute infections caused by influenza A virus, Gram-negative 
+# (Escherichia coli) or Gram-positive (Staphylococcus aureus and Streptococcus pneumoniae) bacteria. 
+
+GSE6269_GPL96 <- GEOquery::getGEO(filename="/Users/kkalantar/Documents/Research/NMLHC/geo_data/GSE6269-GPL96_series_matrix.txt") 
+GSE6269_GPL96_gn <- detect_genecnt_platform(exprs(GSE6269_GPL96))
+Tsalik_GSE6269_GPL96 <- ExpressionSet(assayData = as.matrix(GSE6269_GPL96_gn), phenoData = AnnotatedDataFrame(pData(GSE6269_GPL96)))
+saveRDS(Tsalik_GSE6269_GPL96,"/Users/kkalantar/Documents/Research/NMLHC/geo_data/Tsalik_GSE6269_GPL96.rds")
+
+# I'm not planning to use the validation sets from this GEO dataset
+#g2 <- GEOquery::getGEO(filename="/Users/kkalantar/Documents/Research/NMLHC/geo_data/GSE6269-GPL570_series_matrix.txt")    
+#g3 <- GEOquery::getGEO(filename="/Users/kkalantar/Documents/Research/NMLHC/geo_data/GSE6269-GPL2507_series_matrix.txt”)    
+#c1 <- Biobase::combine(g, g2)
+#c2 <- Biobase::combine(c1, g3)
+
+
+# variable: characteristics_ch1.4; contrast Adenovirus, HHV6, Enterovirus, Rhinovirus, E.coli, NSSA, None
+GSE40396 <- GEOquery::getGEO(filename="/Users/kkalantar/Documents/Research/NMLHC/geo_data/GSE40396_series_matrix.txt")
+GSE40396_gn <- detect_genecnt_platform(exprs(GSE40396))
+Tsalik_GSE40396 <- ExpressionSet(assayData = as.matrix(GSE40396_gn), phenoData = AnnotatedDataFrame(pData(GSE40396)))
+saveRDS(Tsalik_GSE40396, "/Users/kkalantar/Documents/Research/NMLHC/geo_data/Tsalik_GSE40396.rds")
+
+
+# variable: characteristics_ch1.1; contrast bacterial, none, Influenza, RSV
+GSE42026 <- GEOquery::getGEO(filename = "/Users/kkalantar/Documents/Research/NMLHC/geo_data/GSE42026_series_matrix.txt")
+GSE42026_gn <- detect_genecnt_platform(exprs(GSE42026))
+Tsalik_GSE42026 <- ExpressionSet(assayData = as.matrix(GSE42026_gn), phenoData = AnnotatedDataFrame(pData(GSE42026)))
+saveRDS(Tsalik_GSE42026, "/Users/kkalantar/Documents/Research/NMLHC/geo_data/Tsalik_GSE42026.rds")
+
+
+# variable: source_name_ch1; bacterial, Severe, Vaccine
+GSE20346 <-  GEOquery::getGEO(filename = "/Users/kkalantar/Documents/Research/NMLHC/geo_data/GSE20346_series_matrix.txt")
+GSE20346_gn <- detect_genecnt_platform(exprs(GSE20346))
+Tsalik_GSE20346 <- ExpressionSet(assayData = as.matrix(GSE20346_gn), phenoData = AnnotatedDataFrame(pData(GSE20346)))
+saveRDS(Tsalik_GSE20346, "/Users/kkalantar/Documents/Research/NMLHC/geo_data/Tsalik_GSE20346.rds")
+
+
+# variable: characteristics_ch1.2; lung cancer, Control, TB, Active Sarcoid, Non-active sarcoidosis
+GSE42834 <- GEOquery::getGEO(filename = "/Users/kkalantar/Documents/Research/NMLHC/geo_data/GSE42834_series_matrix.txt")
+GSE42834_gn <- detect_genecnt_platform(exprs(GSE42834))
+Tsalik_GSE42834 <- ExpressionSet(assayData = as.matrix(GSE42834_gn), phenoData = AnnotatedDataFrame(pData(GSE42834)))
+saveRDS(Tsalik_GSE42834, "/Users/kkalantar/Documents/Research/NMLHC/geo_data/Tsalik_GSE42834.rds")
+
+
+### NOTE - I might need a way to say "contrast A vs. all others" when I generate the datasets in the script (id for GSE42834 it would be TB v. all others)
+
+
 
 

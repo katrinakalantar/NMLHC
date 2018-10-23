@@ -1,3 +1,4 @@
+#source("http://bioconductor.org/biocLite.R")
 library(R.matlab)      # enables cross-talk with matlab server
 library(PopED)         # contains feval function
 library(matlab)        # contains repmat function equivalent to matlab version
@@ -25,7 +26,9 @@ library(biomaRt)       # required for converting genenames
 library(GSA)           # required for reading the .gmt file for collapsing gene names
 
 
+
 source("/Users/kkalantar/Documents/Research/NMLHC/nmlhc_matlab2R_functions.R")
+source("/Users/kkalantar/Documents/Research/NMLHC/microarray_format_utils.R")
 source("/Users/kkalantar/Documents/Research/NMLHC/pylogger.R")  #sourced from: https://gist.github.com/jonathancallahan/3ed51265d3c6d56818458de95567d3ae
 
 pca_cols <- c("turquoise","green","magenta")
@@ -69,6 +72,16 @@ for(dat in rownames(parameters$datasets)){
     }
   }
 }
+for(dat in rownames(parameters$testdata)){
+  d <- parameters$testdata[dat,]
+  if(d$type == "geo"){
+    if(grepl("series", d$series_filename)){
+      list_of_geo_datasets[[d$name]] <- GEOquery::getGEO(filename=d$series_filename)      
+    }else if(grepl("rds", d$series_filename)){
+      list_of_geo_datasets[[d$name]] <- readRDS(d$series_filename)
+    }
+  }
+}
 
 DS_SIZE_RANGE   = parameters$DS_SIZE_RANGE 
 DIM_RANGE       = parameters$DIM_RANGE
@@ -104,7 +117,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
       #                 draw train/test sets which will remain the same for all iterations of flipping...seems OK to me)
       DIM = DIM_RANGE[dimr]  # n_features
       DS_SIZE = DS_SIZE_RANGE[dsize]
-
+      
       list_of_datasets <- list()
       for(x in rownames(parameters$datasets)){
         d <- parameters$datasets[x,]
@@ -121,6 +134,20 @@ for(dimr in seq(1:length(DIM_RANGE))){
           list_of_datasets[[d$name]] <- NULL
         }
       }
+      
+      
+      # 
+      # Set up test datasets 
+      #
+      list_of_test_sets <- list()
+      for(x in rownames(parameters$testdata)){
+        d <- parameters$testdata[x,]
+        if(d$type == "geo"){
+          list_of_test_sets[[d$name]] <- feval('subset_geo', d$name, list_of_geo_datasets, d$source_variable)
+          logger.info(msg=paste("DATA - GEO - ", d$name, sep=""))
+        }
+      }
+      
       
       for(d in seq(1:length(list_of_datasets))){
         
@@ -144,13 +171,11 @@ for(dimr in seq(1:length(DIM_RANGE))){
         
         for(j in seq(1:length(EXP_RANGE_J))){
           for(i in seq(1:length(EXP_RANGE))){
-
+            
             flip_j = EXP_RANGE_J[j]
             flip_i = EXP_RANGE[i]
             
             logger.info(msg = paste(c("MAIN - ITER - ", "DATA = ", d, ", K = ", k, ", flip_j = ", flip_j, ", flip_i = ", flip_i), collapse="" ))
-            
-            print("A")
             
             Xt = dataset$x
             Xt = Xt[,colSums(Xt) != 0]  # select only the genes with > 0 reads
@@ -165,11 +190,9 @@ for(dimr in seq(1:length(DIM_RANGE))){
             Xs = Xs[,feature_names]      # select only the genes that were present in the training set 
             Xt = Xt[,feature_names]
             
-            print("B")
-            
             logger.info(msg = sprintf("MAIN - DATA - TRAIN - N = %i samples; G1 = %i (%f), G2 = %i (%f)", length(yt), table(yt)[1], table(yt)[1]/length(yt), table(yt)[2], table(yt)[2]/length(yt)))
             logger.info(msg = sprintf("MAIN - DATA - TEST - N = %i samples; G1 = %i (%f), G2 = %i (%f)", length(ys), table(ys)[1], table(ys)[1]/length(ys), table(ys)[2], table(ys)[2]/length(ys)))
-
+            
             Xt = scale(Xt)  # CHECK ON THIS
             Xs = scale(Xs)  # CHECK ON THIS
             
@@ -177,108 +200,44 @@ for(dimr in seq(1:length(DIM_RANGE))){
             yz = a[[1]]
             fdz = a[[2]]
             
-            print("C")
-            
             pca_res <- prcomp(Xt)
-            plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,cex=1.2, lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1])
+            plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],)
             
             Xt_pcatrans <- pca_res$x
             
-            print("D")
-
             # filter with PC
             filter <- make_ensemble(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-                               c("regLogistic", "rf", "knn", "svmLinear3", "nnet"),multiple = FALSE)
-            
-            print("E")
-            
-            # # 
-            # # TESTING AREA - for testing individual algorithms on certain iterations of data
-            # #
-            # ctrl <- trainControl(method = "repeatedcv", savePred=T, classProb=T, number = 10, repeats = 5)
-            # ctrl <- trainControl(method = "cv", savePred=T)#, classProb=T)
-            # mod <- train(Xt_pcatrans, y = unlist(lapply(shuffled_yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
-            #              method = "svmLinear3", trControl = ctrl)
-            # all_predictions <- mod$pred
-            # predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
-            # predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]
-            # sum(predictions_to_use$pred == predictions_to_use$obs)/length(predictions_to_use$pred)
-            # treebag = 98% accurate
-            # svmPoly = 56% accurate
-            # svmLinear = 51% accurate
-            # lssvmLinear  = 56% accurate
-            # lssvmPoly  = 57% accurate
-            # lda didn't work - error
-            # loclda didn't work
-            # nnet = 100% accurate
-            # knn = 100% accurate
-            # kknn = 55% accurate
-            # svmLinearWeights2 = 100 % accurate
-            # svmLinear3 = 100% accurate
-            # #
-            # # END TESTING AREA
-            # #
+                                    c("rf", "knn", "svmLinear3"),multiple = FALSE)  #, , ,"nnet","regLogistic" 
             
             # in this plot, the larger points are the ones that get kept.
             plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
-                 cex = c(.5, 2.0)[as.integer(filter$MF) + 1])
+                 cex = c(1.0, 2.0)[as.integer(filter$MF) + 1])
             
-            
-            print("E")
-            
-
             if(length(table(fdz)) > 1){
               print("F")
               a <- flag_flipped_samples(filter$MF, fdz)
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - %s", toString(a$table)))
               CMs_MF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
-              a <- flag_flipped_samples(filter$CF, fdz)
-              logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - CF - %s", toString(a$table)))
-              CMs_CF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
+              #a <- flag_flipped_samples(filter$CF, fdz)
+              #logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - CF - %s", toString(a$table)))
+              #CMs_CF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
             }else{
               print("G")
               CMs_MF[dimr, dsize, d, k, j, i] = paste(c(1,1,1,1), collapse="_")
-              CMs_CF[dimr, dsize, d, k, j, i] = paste(c(1,1,1,1), collapse="_")
+              #CMs_CF[dimr, dsize, d, k, j, i] = paste(c(1,1,1,1), collapse="_")
               logger.info(msg = "flip_i and flip_j = 0, so no QC metric available:")
               logger.info(msg = paste("MF: ", toString(table(filter$MF))))
               logger.info(msg = paste("CF: ", toString(table(filter$CF))))
             }
             
-            # create a new winit for training the noised model
-            # winit = randn(dim(Xt)[2] + 1, 1)
-            
-            print("H")
-            
             idx_keep <- which(filter$MF)
             Xt_confident <- Xt[idx_keep,]
             yz_confident <- yz[idx_keep]
             
-            print("I")
-            
-            # idx_sub <- which(fdz < 0)
-            # Xt_sub_unflipped <- Xt[idx_sub,]
-            # yz_sub_unflipped <- yz[idx_sub,]
-            
             idx_sub <- shuffle(seq(1:dim(Xt)[1]))[1:round(dim(Xt)[1]/2)] 
             Xt_sub <- Xt[idx_sub,]
             yt_sub <- yt[idx_sub,]
-            
-            
-            print("J")
-            
-            
-            # ctrl <- trainControl(method = "cv", savePred=T, classProb=T)
-            # mod <- train(Xt_confident, y = unlist(lapply(yz_confident, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-            #              method = "regLogistic", trControl = ctrl)
-            # 
-            # all_predictions <- mod$pred
-            # predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
-            # predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]
-            # roc_cv <- pROC::roc(yz_confident, predictions_to_use$pred)
-            # acc_cv <- sum(mod$pred$pred == mod$pred$obs)/length(mod$pred$pred)
-            # 
-            # Liblinear(Xt_confident, y = unlist(lapply(yz_confident, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
-            #           cost = mod$bestTune$cost, epsilon = mod$bestTune$epsilon)
+            yz_sub <- yz[idx_sub,]
             
             # clean model
             CV <- cv.glmnet(Xt_confident, y = (yz_confident == 2), alpha = .5)
@@ -288,8 +247,6 @@ for(dimr in seq(1:length(DIM_RANGE))){
             res_test <- predict(model_clean, Xs, type = "response")
             roc_test <- pROC::roc((ys==2), res_test[,1])
             auc_rlr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
-            
-            print("K")
             
             # # subset unflipped model
             # CV <- cv.glmnet(Xt_sub_unflipped, y = (yz_sub_unflipped == 2), alpha = .5)
@@ -306,10 +263,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
             res_train <- predict(model_sub, Xt_sub, type = "response")
             roc_train <- pROC::roc(yt_sub, res_train[,1])
             res_test <- predict(model_sub, Xs, type = "response")
-            roc_test <- pROC::roc(ys, res_test[,1])
+            roc_test <- pROC::roc((ys==2), res_test[,1])
             auc_gammalr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
-
-            print("L")
             
             # noisy model
             CV <- cv.glmnet(Xt, y = (yz == 2), alpha = .5)
@@ -317,11 +272,9 @@ for(dimr in seq(1:length(DIM_RANGE))){
             res_train <- predict(model_full, Xt, type = "response")
             roc_train <- pROC::roc(yz, res_train[,1])
             res_test <- predict(model_full, Xs, type = "response")
-            roc_test <- pROC::roc(ys, res_test[,1])
+            roc_test <- pROC::roc((ys==2), res_test[,1])
             auc_lr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
-              
             
-            print("M")
           }
         }
       }
@@ -341,7 +294,6 @@ save_data(err_rlr, get_variable_name(err_rlr), EXPERIMENT_DIR)
 #
 # 
 my_palette <- colorRampPalette(c("purple3", "white"))(n = 1001)
-#my_palette3 <- colorRampPalette(c("blue", "white","red"))(n=100)
 my_palette2 <- colorRampPalette(c("white", "green4"))(n = 1001)    # continuous color scale for heatmaps
 discrete_pal <- brewer.pal(6, "Spectral")                          # color palette for discrete variables - line plots for different conditions
 
@@ -383,9 +335,11 @@ discrete_pal <- brewer.pal(6, "Spectral")                          # color palet
 
 
 plot_confusion_matrix(CMs_MF, colorRampPalette(c("white","dodgerblue"))(n = 401), max=400)
-plot_confusion_matrix(CMs_CF, colorRampPalette(c("white","purple"))(n = 301), max = 300)
+#plot_confusion_matrix(CMs_CF, colorRampPalette(c("white","purple"))(n = 301), max = 300)
 
 
 plot_params <- list("DS_SIZE_RANGE" = 2000, "DIM_RANGE" = 200, "DATASET" = "DATASETS_viral_bacterial", "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
 plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
+
+
 
