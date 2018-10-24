@@ -115,3 +115,39 @@ Here are dataset-specific .json blocks for pre-curated datasets used in the anal
 ```
 
 
+
+[**GSE63990**](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE63990)
+Microarray dataset from _Host gene expression classifiers diagnose acute
+respiratory illness etiology_  in which a classifier for bacterial, viral, and non-infectious illness was derived. 
+
+```
+{
+      "name": "viral_bacterial",
+      "type": "geo",
+      "series_filename": "/Users/kkalantar/Documents/Research/NMLHC/geo_data/TSALIK_ORIGINAL.rds",
+      "source_variable": "characteristics_ch1.1"
+}
+```
+
+The same paper validates their classifier on a number of other GEO datasets, listed in the table below.
+
+| Dataset Name  |    GEO ID     | Function | Size | Summary |
+| ------------- | ------------- | ------- | ------- | ------- |
+| TSALIK_ORIGINAL  | [GSE63990](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE63990)  | Training Set | 273 | Total RNA from blood; 88 non-infectious, 115 acute viral infection, 70 acute bacterial infection |
+| Tsalik_GSE6269_GPL96  |  [GSE6269](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE6269)  |Test Set |  131  | Pediatric, peripheral blood;  acute infections caused by influenza A virus, Gram-negative (E. coli) or Gram-positive (S. aureus and S. pneumoniae) bacteria |
+|Tsalik_GSE40396 | [GSE40396](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE40396) | Test Set | 60 | Pediatric, total RNA from whole blood; viral or bacterial infection and healthy. | 
+| Tsalik_GSE42026 | [GSE42026](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE42026)  |  Test Set  | 92  | Pediatric, total RNA from whole blood; 19 H1N1/09 infection, 22 RSV, 18 bacterial, 33 healthy controls |
+|Tsalik_GSE20346| [GSE20346](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE20346) | Test Set | 81 | Whole blood; 6 x 5 days bacterial infection, 4 x 5 days influenza infection, 18 pre- and post- influenza vaccine|
+|Tsalik_GSE42834 | [GSE42834](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE42834) | Test Set | 356 | Whole blood; TB, sarcoidosis, pneumonia, lung cancer |
+
+Each "Test Set" can be added to the parameters.json as file as follows - each as a new entry in the "testdata" list:
+```
+"testdata":[
+    {
+      "name": "bacterial_Influenza",    # covariate positive v. negative class
+      "type": "geo",
+      "series_filename": "NMLHC/geo_data/Tsalik_GSE6269_GPL96.rds",
+      "source_variable": "characteristics_ch1.1"   # covariate of interest
+    }
+  ]
+```
