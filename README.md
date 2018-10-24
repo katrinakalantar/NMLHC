@@ -56,6 +56,14 @@ Here is an example of the overall .json structure:
       "source_variable": "source_name_ch1"
     }
   ],
+  "testdata":[
+    {
+      "name": "Influenza_bacterial",
+      "type": "geo",
+      "series_filename": "/Users/kkalantar/Documents/Research/NMLHC/geo_data/Tsalik_GSE42026.rds",
+      "source_variable": "characteristics_ch1.1"
+    }
+  ],
   "DS_SIZE_RANGE":[
     200
   ],

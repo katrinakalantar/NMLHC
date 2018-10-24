@@ -89,6 +89,9 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
       ctrl <- trainControl(method = "repeatedcv", savePred=T, number = 10, repeats = 5) #classProb=T, 
     }
     
+    if(algorithmL == "nnet"){
+      mod <- train(x, y, method = algorithmL, trControl = ctrl, maxit = 1000)
+    }
     mod <- train(x, y, method = algorithmL, trControl = ctrl)
     all_predictions <- mod$pred
     predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
@@ -403,15 +406,9 @@ split_train_test <- function(input){
 #' @examples
 #' subset_known_dataset(geo_data, "BACTERIA", "VIRUS", "characteristics_ch1.2")
 subset_known_dataset <- function(geo_data, pos_regex, neg_regex, source_variable){
-  print("inside subset_known_dataset()")
 
   pos_split <- split_train_test(geo_data[, grep(pos_regex, pData(geo_data)[,source_variable])])
   neg_split <- split_train_test( geo_data[, grep(neg_regex, pData(geo_data)[,source_variable])])
-  
-  print(class(pos_split$training_set))
-  print(class(neg_split$training_set))
-  print(class(pos_split$test))
-  print(class(neg_split$test_set))
   
   full_train <- Biobase::combine(pos_split$training_set, neg_split$training_set)
   full_test <- Biobase::combine(pos_split$test_set, neg_split$test_set)
@@ -423,9 +420,7 @@ subset_known_dataset <- function(geo_data, pos_regex, neg_regex, source_variable
   true_labels_test <- rep(0, length(pData(full_test)[,source_variable]))
   true_labels_test[grep(pos_regex, pData(full_test)[,source_variable])] <- 1
   true_labels_test <- true_labels_test + 1
-  
-  print(full_train)
-  
+
   return(list("x" = t(as.matrix(exprs(full_train))), "y" = as.matrix(true_labels_train), "ff" = as.matrix(rep(0, length(true_labels_train))),
               "xx" = t(as.matrix(exprs(full_test))), "tt" = as.matrix(true_labels_test), "dd" = as.matrix(rep(0, length(true_labels_test)))))
   

@@ -98,6 +98,11 @@ auc_lr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$nam
 auc_rlr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 auc_gammalr = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 
+auc_lr_test = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$testdata$name, EXP_RANGE_J, EXP_RANGE);
+auc_rlr_test = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$testdata$name, EXP_RANGE_J, EXP_RANGE);
+auc_gammalr_test = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$testdata$name, EXP_RANGE_J, EXP_RANGE);
+
+
 CMs_MF = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 CMs_CF = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 
@@ -140,10 +145,20 @@ for(dimr in seq(1:length(DIM_RANGE))){
       # Set up test datasets 
       #
       list_of_test_sets <- list()
+      list_of_test_sets_scaled <- list()
       for(x in rownames(parameters$testdata)){
         d <- parameters$testdata[x,]
         if(d$type == "geo"){
           list_of_test_sets[[d$name]] <- feval('subset_geo', d$name, list_of_geo_datasets, d$source_variable)
+          
+          X = rbind(list_of_test_sets[[d$name]]$x,list_of_test_sets[[d$name]]$xx)
+          X = X[,colSums(X) != 0]
+          
+          X = scale(X)
+          y = c(list_of_test_sets[[d$name]]$y, list_of_test_sets[[d$name]]$tt)
+          
+          list_of_test_sets_scaled[[d$name]] <- list("X" = X, "y" = y)
+
           logger.info(msg=paste("DATA - GEO - ", d$name, sep=""))
         }
       }
@@ -207,11 +222,11 @@ for(dimr in seq(1:length(DIM_RANGE))){
             
             # filter with PC
             filter <- make_ensemble(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-                                    c("rf", "knn", "svmLinear3"),multiple = FALSE)  #, , ,"nnet","regLogistic" 
+                                    c("rf", "knn", "svmLinear3","regLogistic","nnet"),multiple = FALSE)  #, , ,"nnet","regLogistic" 
             
             # in this plot, the larger points are the ones that get kept.
             plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
-                 cex = c(1.0, 2.0)[as.integer(filter$MF) + 1])
+                 cex = c(0.5, 2.0)[as.integer(filter$MF) + 1])
             
             if(length(table(fdz)) > 1){
               print("F")
@@ -238,6 +253,16 @@ for(dimr in seq(1:length(DIM_RANGE))){
             Xt_sub <- Xt[idx_sub,]
             yt_sub <- yt[idx_sub,]
             yz_sub <- yz[idx_sub,]
+            
+            
+            # noisy model
+            CV <- cv.glmnet(Xt, y = (yz == 2), alpha = .5)
+            model_full <- glmnet(Xt, y = (yz == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
+            res_train <- predict(model_full, Xt, type = "response")
+            roc_train <- pROC::roc(yz, res_train[,1])
+            res_test <- predict(model_full, Xs, type = "response")
+            roc_test <- pROC::roc((ys==2), res_test[,1])
+            auc_lr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
             
             # clean model
             CV <- cv.glmnet(Xt_confident, y = (yz_confident == 2), alpha = .5)
@@ -266,14 +291,41 @@ for(dimr in seq(1:length(DIM_RANGE))){
             roc_test <- pROC::roc((ys==2), res_test[,1])
             auc_gammalr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
             
-            # noisy model
-            CV <- cv.glmnet(Xt, y = (yz == 2), alpha = .5)
-            model_full <- glmnet(Xt, y = (yz == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
-            res_train <- predict(model_full, Xt, type = "response")
-            roc_train <- pROC::roc(yz, res_train[,1])
-            res_test <- predict(model_full, Xs, type = "response")
-            roc_test <- pROC::roc((ys==2), res_test[,1])
-            auc_lr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
+
+            
+            # LOOP THROUGH THE "TEST-TEST" datasets and evaluate performance on those!!
+
+            for(td in seq(1:length(list_of_test_sets_scaled))){
+              print("TEST DATASET")
+              print(names(list_of_test_sets_scaled)[d])
+              logger.info(msg = paste("MAIN - TEST - DATASET - ",names(list_of_test_sets_scaled)[d]))
+              TD <- list_of_test_sets_scaled[[names(list_of_test_sets_scaled)[d]]]
+              TD_X <- TD$X
+              TD_y <- TD$y
+              
+              TD_X = TD_X[,intersect(feature_names, colnames(TD_X))]
+              
+              # add new columns from the original data, fill with zeros
+              new_mat <- matrix( rep(0, nrow(TD_X) * length(feature_names[!(feature_names %in% colnames(TD_X))])), nrow = nrow(TD_X))
+              colnames(new_mat) <- feature_names[!(feature_names %in% colnames(TD_X))]
+              TD_X <- cbind(TD_X, new_mat)
+              
+              
+              res_test_clean <- predict(model_clean, TD_X, type = "response")
+              roc_test_clean <- pROC::roc((TD_y)==2, res_test_clean[,1])
+              
+              res_test_sub <- predict(model_sub, TD_X, type = "response")
+              roc_test_sub <- pROC::roc((TD_y)==2, res_test_sub[,1])
+              
+              res_test_full <- predict(model_full, TD_X, type = "response")
+              roc_test_full <- pROC::roc((TD_y)==2, res_test_full[,1])
+              
+              auc_lr_test[dimr, dsize, td, k, j, i] = roc_test_full$auc 
+              auc_rlr_test[dimr, dsize, td, k, j, i] = roc_test_clean$auc 
+              auc_gammalr_test[dimr, dsize, td, k, j, i] = roc_test_sub$auc 
+              
+            }
+            
             
           }
         }
