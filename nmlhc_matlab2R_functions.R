@@ -1,5 +1,46 @@
 
 
+apriori_feature_selection <- function(Xt){
+  ed <- t(Xt)
+  means <- rowMeans(ed)
+  vars <- apply(ed,1,var)
+  cv2 <- vars/means^2
+  par(mar=c(3.5,3.5,1,1),mgp=c(2,0.65,0),cex=0.9)
+  smoothScatter(log(means),log(cv2))
+  minMeanForFit <- unname( quantile( means[ which( cv2 > .1 ) ], .95 ) )
+  useForFit <- means >= minMeanForFit # & spikeins
+  fit <- glmgam.fit( cbind( a0 = 1, a1tilde = 1/means[useForFit] ),cv2[useForFit] )
+  a0 <- unname( fit$coefficients["a0"] )
+  a1 <- unname( fit$coefficients["a1tilde"])
+  fit$coefficients
+  par(mar=c(3.5,3.5,1,1),mgp=c(2,0.65,0),cex=0.9); smoothScatter(log(means),log(cv2));
+  xg <- exp(seq( min(log(means[means>0])), max(log(means)), length.out=1000 ))
+  vfit <- a1/xg + a0
+  # add fit line
+  lines( log(xg), log(vfit), col="black", lwd=3 )
+  df <- ncol(ed) - 1
+  # add confidence interval
+  lines(log(xg),log(vfit * qchisq(0.975,df)/df),lty=2,col="black")
+  lines(log(xg),log(vfit * qchisq(0.025,df)/df),lty=2,col="black")
+  afit <- a1/means+a0
+  varFitRatio <- vars/(afit*means^2)
+  varorder <- order(varFitRatio,decreasing=T)
+  oed <- ed[varorder,]
+  # save for the next exercise
+  save(oed,file="oed.RData")
+  # repeat previous plot
+  par(mar=c(3.5,3.5,1,1),mgp=c(2,0.65,0),cex=0.9); smoothScatter(log(means),log(cv2)); lines( log(xg), log(vfit), col="black", lwd=3 ); lines(log(xg),log(vfit * qchisq(0.975,df)/df),lty=2,col="black"); lines(log(xg),log(vfit * qchisq(0.025,df)/df),lty=2,col="black");
+  # add top 100 genes
+  points(log(means[varorder[1:100]]),log(cv2[varorder[1:100]]),col=2)
+  pval <- pchisq(varFitRatio*df,df=df,lower.tail=F)
+  adj.pval <- p.adjust(pval,"fdr")
+  sigVariedGenes <- adj.pval<1e-3;
+  table(sigVariedGenes)
+  genes_to_keep <- names(sigVariedGenes)[sigVariedGenes]
+  return(genes_to_keep)
+}
+
+
 convert_genenames <- function(data, gmt_file){
   
   genenames <- colnames(data)
