@@ -24,7 +24,7 @@ librrary(randomForest)
 library(NoiseFiltersR)
 library(biomaRt)       # required for converting genenames
 library(GSA)           # required for reading the .gmt file for collapsing gene names
-
+library(statmod)
 
 
 source("/Users/kkalantar/Documents/Research/NMLHC/nmlhc_matlab2R_functions.R")
@@ -200,6 +200,11 @@ for(dimr in seq(1:length(DIM_RANGE))){
             Xs = Xs[,colSums(Xs) != 0]  # select only the genes with > 0 reads
             ys = dataset$tt
             
+            
+            # a priori feature selection - http://pklab.med.harvard.edu/scw2014/subpop_tutorial.html
+            #features_to_keep <- apriori_feature_selection(Xt)
+            #feature_names <- intersect(intersect(colnames(Xt), colnames(Xs)), features_to_keep)
+            
             # use only features with > 0 reads in training set and test set
             feature_names <- intersect(colnames(Xt), colnames(Xs))
             Xs = Xs[,feature_names]      # select only the genes that were present in the training set 
@@ -218,21 +223,38 @@ for(dimr in seq(1:length(DIM_RANGE))){
             pca_res <- prcomp(Xt)
             #plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],)
             
-            Xt_pcatrans <- pca_res$x
+            # # ADDING 10/24 to run NoiseFiltersR
+            # pca_form <- cbind(pca_res$x, as.factor(yz))
+            # colnames(pca_form) <- c(colnames(pca_res$x), "yz")
+            # pca_form <- as.data.frame(pca_form)
+            # pca_form[, 'yz'] <- as.factor(pca_form[, 'yz'])
+            # #out <- C45robustFilter(yz~., pca_form)
+            # #out <- C45votingFilter(yz~., pca_form), C45iteratedVotingFilter, CVCF, dynamicCF
+            # out <- ORBoostFilter(yz~., pca_form)
+            # out <- AENN(yz~., pca_form)
+            # out <- BBNR(yz~., pca_form)
+            # out <- CNN(yz~., pca_form)
+            # out <- HARF(yz~., data = pca_form, ntrees = 100)
+            
+            
+            Xt_pcatrans <- pca_res$x#[,1:75]
             
             # filter with PC
             filter <- make_ensemble(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-                                    c("rf", "knn", "svmLinear3","regLogistic","nnet"),multiple = FALSE)  #, , ,"nnet","regLogistic" 
+                                    c("rf","svmLinear3","regLogistic","knn","rf"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
             
             # in this plot, the larger points are the ones that get kept.
             plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
                  cex = c(1.0, 2.2)[as.integer(filter$MF) + 1])
+            text(pca_res$x[,1] + 2,pca_res$x[,2] + 1, rowSums(filter$full_res))
             
             if(length(table(fdz)) > 1){
               print("F")
               a <- flag_flipped_samples(filter$MF, fdz)
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - %s", toString(a$table)))
-              CMs_MF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
+              logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - accuracy = %s", toString(a$overall["Accuracy"])))
+              #CMs_MF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
+              CMs_MF[dimr, dsize, d, k, j, i] = a$overall["Accuracy"]
               #a <- flag_flipped_samples(filter$CF, fdz)
               #logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - CF - %s", toString(a$table)))
               #CMs_CF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
@@ -256,8 +278,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
             
             
             # noisy model
-            CV <- cv.glmnet(Xt, y = (yz == 2), alpha = .5)
-            model_full <- glmnet(Xt, y = (yz == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
+            CV <- cv.glmnet(Xt, y = (yz == 2), alpha = 1)
+            model_full <- glmnet(Xt, y = (yz == 2), family = "binomial", lambda = CV$lambda.min, alpha = 1)
             res_train <- predict(model_full, Xt, type = "response")
             roc_train <- pROC::roc(yz, res_train[,1])
             res_test <- predict(model_full, Xs, type = "response")
@@ -265,8 +287,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
             auc_lr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
             
             # clean model
-            CV <- cv.glmnet(Xt_confident, y = (yz_confident == 2), alpha = .5)
-            model_clean <- glmnet(Xt_confident, y = (yz_confident == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
+            CV <- cv.glmnet(Xt_confident, y = (yz_confident == 2), alpha = 1)
+            model_clean <- glmnet(Xt_confident, y = (yz_confident == 2), family = "binomial", lambda = CV$lambda.min, alpha = 1)
             res_train <- predict(model_clean, Xt_confident, type = "response")
             roc_train <- pROC::roc((yz_confident == 2), res_train[,1])
             res_test <- predict(model_clean, Xs, type = "response")
@@ -283,8 +305,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
             # auc_gammalr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
             
             # subset unflipped model
-            CV <- cv.glmnet(Xt_sub, y = (yt_sub == 2), alpha = .5)
-            model_sub <- glmnet(Xt_sub, y = (yt_sub == 2), family = "binomial", lambda = CV$lambda.min, alpha = .5)
+            CV <- cv.glmnet(Xt_sub, y = (yt_sub == 2), alpha = 1)
+            model_sub <- glmnet(Xt_sub, y = (yt_sub == 2), family = "binomial", lambda = CV$lambda.min, alpha = 1)
             res_train <- predict(model_sub, Xt_sub, type = "response")
             roc_train <- pROC::roc(yt_sub, res_train[,1])
             res_test <- predict(model_sub, Xs, type = "response")
@@ -295,35 +317,37 @@ for(dimr in seq(1:length(DIM_RANGE))){
             
             # LOOP THROUGH THE "TEST-TEST" datasets and evaluate performance on those!!
 
-            for(td in seq(1:length(list_of_test_sets_scaled))){
-              print("TEST DATASET")
-              print(names(list_of_test_sets_scaled)[td])
-              logger.info(msg = paste("MAIN - TEST - DATASET - ",names(list_of_test_sets_scaled)[td]))
-              TD <- list_of_test_sets_scaled[[names(list_of_test_sets_scaled)[td]]]
-              TD_X <- TD$X
-              TD_y <- TD$y
-              
-              TD_X = TD_X[,intersect(feature_names, colnames(TD_X))]
-              
-              # add new columns from the original data, fill with zeros
-              new_mat <- matrix( rep(0, nrow(TD_X) * length(feature_names[!(feature_names %in% colnames(TD_X))])), nrow = nrow(TD_X))
-              colnames(new_mat) <- feature_names[!(feature_names %in% colnames(TD_X))]
-              TD_X <- cbind(TD_X, new_mat)
-              
-              
-              res_test_clean <- predict(model_clean, TD_X, type = "response")
-              roc_test_clean <- pROC::roc((TD_y)==2, res_test_clean[,1])
-              
-              res_test_sub <- predict(model_sub, TD_X, type = "response")
-              roc_test_sub <- pROC::roc((TD_y)==2, res_test_sub[,1])
-              
-              res_test_full <- predict(model_full, TD_X, type = "response")
-              roc_test_full <- pROC::roc((TD_y)==2, res_test_full[,1])
-              
-              auc_lr_test[dimr, dsize, td, k, j, i] = roc_test_full$auc 
-              auc_rlr_test[dimr, dsize, td, k, j, i] = roc_test_clean$auc 
-              auc_gammalr_test[dimr, dsize, td, k, j, i] = roc_test_sub$auc 
-              
+            if(length(list_of_test_sets_scaled) > 0){
+              for(td in seq(1:length(list_of_test_sets_scaled))){
+                print("TEST DATASET")
+                print(names(list_of_test_sets_scaled)[td])
+                logger.info(msg = paste("MAIN - TEST - DATASET - ",names(list_of_test_sets_scaled)[td]))
+                TD <- list_of_test_sets_scaled[[names(list_of_test_sets_scaled)[td]]]
+                TD_X <- TD$X
+                TD_y <- TD$y
+                
+                TD_X = TD_X[,intersect(feature_names, colnames(TD_X))]
+                
+                # add new columns from the original data, fill with zeros
+                new_mat <- matrix( rep(0, nrow(TD_X) * length(feature_names[!(feature_names %in% colnames(TD_X))])), nrow = nrow(TD_X))
+                colnames(new_mat) <- feature_names[!(feature_names %in% colnames(TD_X))]
+                TD_X <- cbind(TD_X, new_mat)
+                
+                
+                res_test_clean <- predict(model_clean, TD_X, type = "response")
+                roc_test_clean <- pROC::roc((TD_y)==2, res_test_clean[,1])
+                
+                res_test_sub <- predict(model_sub, TD_X, type = "response")
+                roc_test_sub <- pROC::roc((TD_y)==2, res_test_sub[,1])
+                
+                res_test_full <- predict(model_full, TD_X, type = "response")
+                roc_test_full <- pROC::roc((TD_y)==2, res_test_full[,1])
+                
+                auc_lr_test[dimr, dsize, td, k, j, i] = roc_test_full$auc 
+                auc_rlr_test[dimr, dsize, td, k, j, i] = roc_test_clean$auc 
+                auc_gammalr_test[dimr, dsize, td, k, j, i] = roc_test_sub$auc 
+                
+              }  
             }
             
             
@@ -383,6 +407,16 @@ discrete_pal <- brewer.pal(6, "Spectral")                          # color palet
 # length(union(rownames(head(rfs_flipped_ttest$res, n=1000)),rownames(head(rfs_flipped_roc$res, n=1000))))
 
 # overlap <- plot_feature_similarity(features_selected, c(100, 500, 1000, 2500, 5000, 10000))#, "fileroot" = paste(EXPERIMENT_DIR, "features_byflip", sep=""))
+
+
+
+# P-value rLR v. gammaLR
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr[1,1,,,,][,x], auc_gammalr[1,1,,,,][,x])$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr[1,1,,,,][,x], auc_lr[1,1,,,,][,x])$p.value)}))
+
+
+
+
 
 
 

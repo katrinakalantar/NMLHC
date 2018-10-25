@@ -34,7 +34,7 @@ apriori_feature_selection <- function(Xt){
   points(log(means[varorder[1:100]]),log(cv2[varorder[1:100]]),col=2)
   pval <- pchisq(varFitRatio*df,df=df,lower.tail=F)
   adj.pval <- p.adjust(pval,"fdr")
-  sigVariedGenes <- adj.pval<1e-3;
+  sigVariedGenes <- adj.pval<5e-2;
   table(sigVariedGenes)
   genes_to_keep <- names(sigVariedGenes)[sigVariedGenes]
   return(genes_to_keep)
@@ -121,6 +121,7 @@ plot_confusion_matrix <- function(CM, colorpal = colorRampPalette(c("purple3", "
 #' @examples
 #' make_ensemble(x, y, c("regLogistic", "rf", "knn", "svmLinear3", "nnet"), multiple = TRUE)
 make_ensemble <- function(x, y, library, multiple = TRUE){
+  count = 0
   list_of_results <- list()
   for(algorithmL in library){
     ctrl <- trainControl(method = "cv", savePred=T) #, classProb=T
@@ -139,6 +140,7 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
     all_predictions <- mod$pred
     predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
     predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]   # MAJOR FIX 10/15
+    sum(predictions_to_use$pred == predictions_to_use$obs) / length(predictions_to_use$pred)
     
     if(multiple){
       # collapse predictions_to_use
@@ -154,12 +156,18 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
 
     discordant <- predictions_to_use$pred != predictions_to_use$obs
     
-    list_of_results[[algorithmL]] = discordant
+    if((algorithmL) %in% names(list_of_results)){
+      count = count + 1
+      list_of_results[[paste(algorithmL, count, sep = "")]] = discordant
+    }else{
+      list_of_results[[algorithmL]] = discordant
+    }
   }
   
   r <- do.call(cbind, list_of_results)
+  print(rowSums(r))
   
-  majority_filter <- rowSums(r)/ncol(r) > .5
+  majority_filter <- rowSums(r)/ncol(r) > .6
   consensus_filter <- rowSums(r)/ncol(r) == 1
   
   keep_majority_filter <- !majority_filter
@@ -178,7 +186,7 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
 flag_flipped_samples <- function(keeping, fdz){
   cm <- confusionMatrix(factor(as.integer(keeping)), factor(as.integer(fdz < 0)), positive = "1")
   print(cm)
-  plot(cm$table)
+  #plot(cm$table)
   return(cm)
 }
 
