@@ -89,10 +89,12 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
       ctrl <- trainControl(method = "repeatedcv", savePred=T, number = 10, repeats = 5) #classProb=T, 
     }
     
+    mod <- NULL
     if(algorithmL == "nnet"){
       mod <- train(x, y, method = algorithmL, trControl = ctrl, maxit = 1000)
+    }else{
+      mod <- train(x, y, method = algorithmL, trControl = ctrl)
     }
-    mod <- train(x, y, method = algorithmL, trControl = ctrl)
     all_predictions <- mod$pred
     predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
     predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]   # MAJOR FIX 10/15
@@ -952,23 +954,23 @@ inject_label_noiseR <- function(y, flip_i, flip_j){
   
   fd <- rep(1, length(y)) * -1
   yz <- castLabel(y, -1)
-  print("yz")
-  print(yz)
+  #print("yz")
+  #print(yz)
   y <- castLabel(y, 2)
-  print('y')
-  print(y)
+  #print('y')
+  #print(y)
   
   flip_rate <- c(flip_i, flip_j)
   
   for(i in c(1,2)){
-    print(i)
+    #print(i)
     prob = rand(length(yz),1)
     idx = intersect(which(y==i), which(prob <= flip_rate[i]))
-    print(idx)
-    print("yz[idx]")
-    print(yz[idx])
+    #print(idx)
+    #print("yz[idx]")
+    #print(yz[idx])
     yz[idx] = yz[idx] * -1
-    print(yz[idx])
+    #print(yz[idx])
     fd[idx] = fd[idx] * -1
   }
  

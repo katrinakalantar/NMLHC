@@ -216,7 +216,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
             fdz = a[[2]]
             
             pca_res <- prcomp(Xt)
-            plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],)
+            #plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],)
             
             Xt_pcatrans <- pca_res$x
             
@@ -226,7 +226,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
             
             # in this plot, the larger points are the ones that get kept.
             plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
-                 cex = c(0.5, 2.0)[as.integer(filter$MF) + 1])
+                 cex = c(1.0, 2.2)[as.integer(filter$MF) + 1])
             
             if(length(table(fdz)) > 1){
               print("F")
@@ -297,9 +297,9 @@ for(dimr in seq(1:length(DIM_RANGE))){
 
             for(td in seq(1:length(list_of_test_sets_scaled))){
               print("TEST DATASET")
-              print(names(list_of_test_sets_scaled)[d])
-              logger.info(msg = paste("MAIN - TEST - DATASET - ",names(list_of_test_sets_scaled)[d]))
-              TD <- list_of_test_sets_scaled[[names(list_of_test_sets_scaled)[d]]]
+              print(names(list_of_test_sets_scaled)[td])
+              logger.info(msg = paste("MAIN - TEST - DATASET - ",names(list_of_test_sets_scaled)[td]))
+              TD <- list_of_test_sets_scaled[[names(list_of_test_sets_scaled)[td]]]
               TD_X <- TD$X
               TD_y <- TD$y
               
@@ -394,4 +394,30 @@ plot_params <- list("DS_SIZE_RANGE" = 2000, "DIM_RANGE" = 200, "DATASET" = "DATA
 plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
 
 
+
+colMeans(auc_gammalr_test[1,1,1,,,] - auc_rlr_test[1,1,1,,,])
+colMeans(auc_lr_test[1,1,1,,,] - auc_rlr_test[1,1,1,,,])
+
+
+# TEST SET
+colors <- brewer.pal(5, "Dark2")
+matplot(t(auc_rlr[1,1,1,,,] - auc_gammalr[1,1,1,,,]), col = colors, cex = 1.8, pch=0, lwd=2,
+        main = "rLR - gammaLR", xlab = "J_FLIP", ylab = "Difference", ylim = c(-.5, .5))
+abline(h = 0, lty = 2)
+matplot(t(auc_rlr[1,1,1,,,] - auc_lr[1,1,1,,,]), col = colors, cex = 1.8, pch=0, lwd=2,
+        main = "rLR - LR", xlab = "J_FLIP", ylab = "Difference", ylim = c(-.5, .5))
+abline(h = 0, lty = 2)
+
+# VALIDATION SET(S)
+matplot(t(auc_rlr_test[1,1,3,,,] - auc_gammalr_test[1,1,3,,,]), col = colors, cex = 1.8, pch=0, lwd=2,
+        main = "rLR - gammaLR", xlab = "J_FLIP", ylab = "Difference", ylim = c(-.5, .5))
+matplot(t(auc_rlr_test[1,1,2,,,] - auc_gammalr_test[1,1,2,,,]), col = colors, cex = 1.8, pch=1, lwd=2, add = TRUE)
+matplot(t(auc_rlr_test[1,1,1,,,] - auc_gammalr_test[1,1,1,,,]), col = colors, cex = 1.8, pch=2, lwd=2, add = TRUE)
+abline(h = 0, lty = 2)
+
+matplot(t(auc_rlr_test[1,1,3,,,] - auc_lr_test[1,1,3,,,]), col = colors, cex = 1.8, pch=0, lwd=2,
+        main = "rLR - LR", xlab = "J_FLIP", ylab = "Difference", ylim = c(-.5, .5))
+matplot(t(auc_rlr_test[1,1,2,,,] - auc_lr_test[1,1,2,,,]), col = colors, cex = 1.8, pch=1, lwd=2, add = TRUE)
+matplot(t(auc_rlr_test[1,1,1,,,] - auc_lr_test[1,1,1,,,]), col = colors, cex = 1.8, pch=2, lwd=2, add = TRUE)
+abline(h = 0, lty = 2)
 
