@@ -105,6 +105,7 @@ auc_gammalr_test = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$te
 
 
 CMs_MF = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
+CMs_MFauc = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 CMs_CF = create_new_result_set(DIM_RANGE, DS_SIZE_RANGE, parameters$datasets$name, EXP_RANGE_J, EXP_RANGE);
 
 features_selected <- list() 
@@ -256,6 +257,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - accuracy = %s", toString(a$overall["Accuracy"])))
               #CMs_MF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
               CMs_MF[dimr, dsize, d, k, j, i] = a$overall["Accuracy"]
+              CMs_MFauc[dimr, dsize, d, k, j, i] = pROC::roc((fdz==1),rowSums(filter$full_res))$auc  #pROC::roc((fdz==1),as.integer(filter$MF))
               #a <- flag_flipped_samples(filter$CF, fdz)
               #logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - CF - %s", toString(a$table)))
               #CMs_CF[dimr, dsize, d, k, j, i] = paste(as.vector(a$table), collapse="_")
