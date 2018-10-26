@@ -25,6 +25,7 @@ library(NoiseFiltersR)
 library(biomaRt)       # required for converting genenames
 library(GSA)           # required for reading the .gmt file for collapsing gene names
 library(statmod)
+library(parallel)
 
 
 source("/Users/kkalantar/Documents/Research/NMLHC/nmlhc_matlab2R_functions.R")
@@ -240,8 +241,8 @@ for(dimr in seq(1:length(DIM_RANGE))){
             Xt_pcatrans <- pca_res$x#[,1:75]
             
             # filter with PC
-            filter <- make_ensemble(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-                                    c("rf","svmLinear3","regLogistic","knn","rf"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
+            filter <- make_ensemble_parallel(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+                                    c("rf","svmLinear3","regLogistic","knn","nnet"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
             
             # in this plot, the larger points are the ones that get kept.
             plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
@@ -271,7 +272,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
             Xt_confident <- Xt[idx_keep,]
             yz_confident <- yz[idx_keep]
             
-            idx_sub <- shuffle(seq(1:dim(Xt)[1]))[1:round(dim(Xt)[1]/2)] 
+            idx_sub <- shuffle(seq(1:dim(Xt)[1]))[1:round(dim(Xt)[1] * .25)] 
             Xt_sub <- Xt[idx_sub,]
             yt_sub <- yt[idx_sub,]
             yz_sub <- yz[idx_sub,]
@@ -411,12 +412,24 @@ discrete_pal <- brewer.pal(6, "Spectral")                          # color palet
 
 
 # P-value rLR v. gammaLR
-unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr[1,1,,,,][,x], auc_gammalr[1,1,,,,][,x])$p.value)}))
-unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr[1,1,,,,][,x], auc_lr[1,1,,,,][,x])$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr[1,1,,,,][,x], auc_gammalr[1,1,,,,][,x], alternative = "greater")$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr[1,1,,,,][,x], auc_lr[1,1,,,,][,x], alternative = "greater")$p.value)}))
 
 
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,1,,,][,x], auc_gammalr_test[1,1,1,,,][,x], alternative = "greater")$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,1,,,][,x], auc_lr_test[1,1,1,,,][,x], alternative = "greater")$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,2,,,][,x], auc_gammalr_test[1,1,2,,,][,x], alternative = "greater")$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,2,,,][,x], auc_lr_test[1,1,2,,,][,x], alternative = "greater")$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,3,,,][,x], auc_gammalr_test[1,1,3,,,][,x], alternative = "greater")$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,3,,,][,x], auc_lr_test[1,1,3,,,][,x], alternative = "greater")$p.value)}))
 
 
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,1,,,][,x], auc_gammalr_test[1,1,1,,,][,x])$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,1,,,][,x], auc_lr_test[1,1,1,,,][,x])$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,2,,,][,x], auc_gammalr_test[1,1,2,,,][,x])$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,2,,,][,x], auc_lr_test[1,1,2,,,][,x])$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,3,,,][,x], auc_gammalr_test[1,1,3,,,][,x])$p.value)}))
+unlist(lapply(seq(1:4),function(x){return(wilcox.test(auc_rlr_test[1,1,3,,,][,x], auc_lr_test[1,1,3,,,][,x])$p.value)}))
 
 
 

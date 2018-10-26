@@ -111,6 +111,51 @@ plot_confusion_matrix <- function(CM, colorpal = colorRampPalette(c("purple3", "
 }
 
 
+algApplyFn <- function(algorithmL, x, y){
+    ctrl <- trainControl(method = "cv", savePred=T) #, classProb=T
+
+    mod <- NULL
+    if(algorithmL == "nnet"){
+      mod <- train(x, y, method = algorithmL, trControl = ctrl, maxit = 500)
+    }else{
+      mod <- train(x, y, method = algorithmL, trControl = ctrl)
+    }
+    
+    all_predictions <- mod$pred
+    predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
+    predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]   # MAJOR FIX 10/15
+    sum(predictions_to_use$pred == predictions_to_use$obs) / length(predictions_to_use$pred)
+    
+    concordant <- predictions_to_use$pred == predictions_to_use$obs
+    accuracy <- sum(predictions_to_use$pred == predictions_to_use$obs)/length(predictions_to_use$obs)
+    logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - %s, accuracy = %f", algorithmL, accuracy))
+    
+    discordant <- predictions_to_use$pred != predictions_to_use$obs
+    
+    return(discordant)
+}
+
+make_ensemble_parallel <- function(x, y, library, multiple = TRUE){
+  count = 0
+  list_of_results <- list()
+  
+  list_of_results = mclapply(library, function(alg){return(algApplyFn(alg, x, y))})
+  names(list_of_results) <- make.unique(library)
+  print(list_of_results)
+  
+  r <- do.call(cbind, list_of_results)
+  print(rowSums(r))
+  
+  majority_filter <- rowSums(r)/ncol(r) > .6
+  consensus_filter <- rowSums(r)/ncol(r) == 1
+  
+  keep_majority_filter <- !majority_filter
+  keep_consensus_filter <- !consensus_filter
+  
+  return(list("MF" = keep_majority_filter, "CF" = keep_consensus_filter, "full_res" = r) )#, "P" = p))
+}
+
+
 #' Generate predictions based on an ensemble of classification algorithms; 
 #' 
 #' @param x training data; matrix of features/covariates used for prediction.
@@ -125,15 +170,15 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
   list_of_results <- list()
   for(algorithmL in library){
     ctrl <- trainControl(method = "cv", savePred=T) #, classProb=T
-    
+
     if(multiple){
       print("generating ensemble with repeats")
-      ctrl <- trainControl(method = "repeatedcv", savePred=T, number = 10, repeats = 5) #classProb=T, 
+      ctrl <- trainControl(method = "repeatedcv", savePred=T, number = 10, repeats = 5) #classProb=T,
     }
-    
+
     mod <- NULL
     if(algorithmL == "nnet"){
-      mod <- train(x, y, method = algorithmL, trControl = ctrl, maxit = 1000)
+      mod <- train(x, y, method = algorithmL, trControl = ctrl, maxit = 500)
     }else{
       mod <- train(x, y, method = algorithmL, trControl = ctrl)
     }
@@ -141,7 +186,7 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
     predictions_to_use <- all_predictions[rowSums(do.call(cbind, lapply(names(mod$bestTune), function(x){print(x); return(all_predictions[,x] == mod$bestTune[[x]])}))) == length(mod$bestTune),]
     predictions_to_use <- predictions_to_use[order(predictions_to_use$rowIndex),]   # MAJOR FIX 10/15
     sum(predictions_to_use$pred == predictions_to_use$obs) / length(predictions_to_use$pred)
-    
+
     if(multiple){
       # collapse predictions_to_use
       n <- do.call(rbind, lapply(unique(predictions_to_use$rowIndex), function(x){b = predictions_to_use[predictions_to_use$rowIndex == x,]; a = which.max(table(b$pred)); print(names(a)); return(b[b$pred == names(a), ])}))
@@ -149,13 +194,13 @@ make_ensemble <- function(x, y, library, multiple = TRUE){
       n <- n[!duplicated(n), ]
       predictions_to_use <- n
     }
-    
+
     concordant <- predictions_to_use$pred == predictions_to_use$obs
     accuracy <- sum(predictions_to_use$pred == predictions_to_use$obs)/length(predictions_to_use$obs)
     logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - %s, accuracy = %f", algorithmL, accuracy))
 
     discordant <- predictions_to_use$pred != predictions_to_use$obs
-    
+
     if((algorithmL) %in% names(list_of_results)){
       count = count + 1
       list_of_results[[paste(algorithmL, count, sep = "")]] = discordant
