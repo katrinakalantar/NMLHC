@@ -1,5 +1,56 @@
 
 
+subset_geo_cv <- function(geo_dataset_name, geo_dataset_list, source_variable){
+  split <- strsplit(geo_dataset_name, "_")
+  print(split)
+  pos_regex <- split[[1]][1]
+  neg_regex <- split[[1]][2]
+  return_value <- subset_known_dataset_cv(geo_dataset_list[[geo_dataset_name]], pos_regex, neg_regex, source_variable)
+  return(return_value)
+}
+
+split_train_test_cv <- function(input, cv=10){
+  print("inside split_train_test()")
+  s <- shuffle(seq(1:dim(input)[2]))
+  cv_datasets <- list()
+  test_splits <- split(s, sort(s%%cv))
+  for(i in seq(1:length(test_splits))){
+    training_set <- input[,s[!(s %in% test_splits[[i]])]]
+    test_set <- input[,test_splits[[i]]]
+    cv_datasets[[i]] <- list("training_set" = training_set, "test_set" = test_set)
+  }
+  return(cv_datasets)
+}
+
+subset_known_dataset_cv <- function(geo_data, pos_regex, neg_regex, source_variable){
+  
+  pos_split <- split_train_test_cv(geo_data[, grep(pos_regex, pData(geo_data)[,source_variable])])
+  neg_split <- split_train_test_cv( geo_data[, grep(neg_regex, pData(geo_data)[,source_variable])])
+  
+  full_dataset <- list()
+  for(i in seq(1:length(pos_split))){
+    
+    full_train <- Biobase::combine(pos_split[[i]]$training_set, neg_split[[i]]$training_set)
+    full_test <- Biobase::combine(pos_split[[i]]$test_set, neg_split[[i]]$test_set)
+    
+    true_labels_train <- rep(0, length(pData(full_train)[,source_variable]))
+    true_labels_train[grep(pos_regex, pData(full_train)[,source_variable])] <- 1
+    true_labels_train <- true_labels_train + 1
+    
+    true_labels_test <- rep(0, length(pData(full_test)[,source_variable]))
+    true_labels_test[grep(pos_regex, pData(full_test)[,source_variable])] <- 1
+    true_labels_test <- true_labels_test + 1
+    
+    full_dataset[[i]] <- list("x" = t(as.matrix(exprs(full_train))), "y" = as.matrix(true_labels_train), "ff" = as.matrix(rep(0, length(true_labels_train))),
+                              "xx" = t(as.matrix(exprs(full_test))), "tt" = as.matrix(true_labels_test), "dd" = as.matrix(rep(0, length(true_labels_test))))
+    
+  }
+  
+  return(full_dataset)
+  
+}
+
+
 apriori_feature_selection <- function(Xt){
   ed <- t(Xt)
   means <- rowMeans(ed)
