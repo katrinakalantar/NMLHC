@@ -9,23 +9,45 @@ subset_geo_cv <- function(geo_dataset_name, geo_dataset_list, source_variable){
   return(return_value)
 }
 
-split_train_test_cv <- function(input, cv=10){
+split_train_test_cv <- function(input, regex, source_variable, flip_i, flip_j, cv=10){
   print("inside split_train_test()")
   s <- shuffle(seq(1:dim(input)[2]))
   cv_datasets <- list()
   test_splits <- split(s, sort(s%%cv))
+  
+  true_labels <- rep(0, length(pData(input)[,source_variable]))
+  true_labels[grep(regex, pData(input)[,source_variable])] <- 1
+  true_labels <- true_labels + 1
+  
+  print(head(true_labels, n=10))
+  
+  a = inject_label_noiseR(true_labels, flip_i, flip_j)
+  flipped_labels <- a$yz
+  flipped_markers <- a$fd
+  print(flip_i)
+  print(flip_j)
+  print(table(flipped_markers)[2]/(table(flipped_markers)[1]+table(flipped_markers)[2]))
+  #print(table(flipped_markers))
+  
+  print(head(flipped_labels, n=10))
+  print(head(flipped_markers, n=10))
+  
   for(i in seq(1:length(test_splits))){
     training_set <- input[,s[!(s %in% test_splits[[i]])]]
+    training_flipped_labels <- flipped_labels[s[!(s %in% test_splits[[i]])]]
+    training_flipped_markers <- flipped_markers[s[!(s %in% test_splits[[i]])]]
+    
     test_set <- input[,test_splits[[i]]]
-    cv_datasets[[i]] <- list("training_set" = training_set, "test_set" = test_set)
+    cv_datasets[[i]] <- list("training_set" = training_set, "test_set" = test_set, "training_flipped_labels" = training_flipped_labels, "training_flipped_markers" = training_flipped_markers)
   }
   return(cv_datasets)
 }
 
-subset_known_dataset_cv <- function(geo_data, pos_regex, neg_regex, source_variable){
+
+subset_known_dataset_cv <- function(geo_data, pos_regex, neg_regex, source_variable, flip_i, flip_j){
   
-  pos_split <- split_train_test_cv(geo_data[, grep(pos_regex, pData(geo_data)[,source_variable])])
-  neg_split <- split_train_test_cv( geo_data[, grep(neg_regex, pData(geo_data)[,source_variable])])
+  pos_split <- split_train_test_cv( geo_data[, grep(pos_regex, pData(geo_data)[,source_variable])], pos_regex, source_variable, flip_i, flip_j)
+  neg_split <- split_train_test_cv( geo_data[, grep(neg_regex, pData(geo_data)[,source_variable])], pos_regex, source_variable, flip_i, flip_j)
   
   full_dataset <- list()
   for(i in seq(1:length(pos_split))){
@@ -37,15 +59,17 @@ subset_known_dataset_cv <- function(geo_data, pos_regex, neg_regex, source_varia
     true_labels_train[grep(pos_regex, pData(full_train)[,source_variable])] <- 1
     true_labels_train <- true_labels_train + 1
     
+    flipped_labels_train <- c((pos_split[[i]]$training_flipped_labels),(neg_split[[i]]$training_flipped_labels))
+    flipped_markers_train <- c((pos_split[[i]]$training_flipped_markers),(neg_split[[i]]$training_flipped_markers))
+
     true_labels_test <- rep(0, length(pData(full_test)[,source_variable]))
     true_labels_test[grep(pos_regex, pData(full_test)[,source_variable])] <- 1
     true_labels_test <- true_labels_test + 1
     
-    full_dataset[[i]] <- list("x" = t(as.matrix(exprs(full_train))), "y" = as.matrix(true_labels_train), "ff" = as.matrix(rep(0, length(true_labels_train))),
+    full_dataset[[i]] <- list("x" = t(as.matrix(exprs(full_train))), "y" = as.matrix(true_labels_train), "yz" = as.matrix(flipped_labels_train), "ff" = as.matrix(flipped_markers_train),
                               "xx" = t(as.matrix(exprs(full_test))), "tt" = as.matrix(true_labels_test), "dd" = as.matrix(rep(0, length(true_labels_test))))
     
   }
-  
   return(full_dataset)
   
 }
@@ -1096,29 +1120,16 @@ inject_label_noise <- function(yt, flip_i, flip_j){
 
 
 inject_label_noiseR <- function(y, flip_i, flip_j){
-  
   fd <- rep(1, length(y)) * -1
   yz <- castLabel(y, -1)
-  #print("yz")
-  #print(yz)
   y <- castLabel(y, 2)
-  #print('y')
-  #print(y)
-  
   flip_rate <- c(flip_i, flip_j)
-  
   for(i in c(1,2)){
-    #print(i)
     prob = rand(length(yz),1)
     idx = intersect(which(y==i), which(prob <= flip_rate[i]))
-    #print(idx)
-    #print("yz[idx]")
-    #print(yz[idx])
     yz[idx] = yz[idx] * -1
-    #print(yz[idx])
     fd[idx] = fd[idx] * -1
   }
- 
   yz = castLabel(yz, 2)
   return(list("yz" = yz, "fd" = fd))
 }
