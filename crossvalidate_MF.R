@@ -162,15 +162,16 @@ for(dimr in seq(1:length(DIM_RANGE))){
               Xt_pcatrans <- pca_res$x
               
               # filter with PC
+              print("FIRST FILTRATION:")
               filter <- make_ensemble_parallel(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
                                                c("rf","svmLinear3","regLogistic","knn","nnet"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
               
               # in this plot, the larger points are the ones that get kept.
               plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
-                   cex = c(1.0, 2.2)[as.integer(filter$MF) + 1])
-              text(pca_res$x[,1] + 2,pca_res$x[,2] + 1, rowSums(filter$full_res))
-              plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
-                   cex = c(1.0, 2.2)[as.integer(filter$MF) + 1])
+                   cex = c(1.0, 2.2)[as.integer(filter$MF) + 1], main = "Iter1")
+              #text(pca_res$x[,1] + 2,pca_res$x[,2] + 1, rowSums(filter$full_res))
+              #plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
+              #     cex = c(1.0, 2.2)[as.integer(filter$MF) + 1], main = "Iter 1")
               
               
               a <- flag_flipped_samples(filter$MF, fdz)
@@ -186,14 +187,15 @@ for(dimr in seq(1:length(DIM_RANGE))){
               fdz_confident <- fdz[idx_keep]
               
               ####### LOOPING AGAIN!!! #######
+              print("SECOND FILTRATION:")
               pca_res2 <- prcomp(Xt_confident)
               Xt_pcatrans2 <- pca_res2$x
               filter2 <- make_ensemble_parallel(Xt_pcatrans2, y = unlist(lapply(yz_confident, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
                                                c("rf","svmLinear3","regLogistic","knn","nnet"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
               # in this plot, the larger points are the ones that get kept.
               plot(pca_res2$x[,1],pca_res2$x[,2], col = pca_cols2[yt_confident] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz_confident < 0) + 1],
-                   cex = c(1.0, 2.2)[as.integer(filter2$MF) + 1])
-              text(pca_res2$x[,1] + 2,pca_res2$x[,2] + 1, rowSums(filter2$full_res))
+                   cex = c(1.0, 2.2)[as.integer(filter2$MF) + 1], main = "Iter2")
+              #text(pca_res2$x[,1] + 2,pca_res2$x[,2] + 1, rowSums(filter2$full_res))
               a2 <- flag_flipped_samples(filter2$MF, fdz_confident)
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF2 - %s", toString(a2$table)))
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF2 - accuracy = %s", toString(a2$overall["Accuracy"])))
@@ -241,7 +243,7 @@ for(dimr in seq(1:length(DIM_RANGE))){
             newdat <- rbind(Xt,Xs)
             newpca <- prcomp(newdat)
             newpca_trans <- newpca$x
-            set.seed(20)
+            #set.seed(20)
             clusters <- kmeans(newpca_trans, 2)
             par(mfrow = c(1,4))
             plot(newpca_trans[,1], newpca_trans[,2], col= c("red","blue")[clusters$cluster], main = "k-means cluster prediction")                       # cluster result scatterplot
@@ -252,6 +254,13 @@ for(dimr in seq(1:length(DIM_RANGE))){
             plot(newpca_trans[,1], newpca_trans[,2], col=c("red","blue")[round(unlist(cv_results)[names(newpca_trans[,1])]) + 1], main = "KK_alg prediction")       # algorithm-predicted scatterplot
             barplot(unlist(cv_results), col = c("red","blue")[(unlist(lapply(dataset, function(x){return(x$tt)}))==2) + 1])             # barplot
             barplot(unlist(clusters$cluster)[names(unlist(cv_results))], col = c("red","blue")[(unlist(lapply(dataset, function(x){return(x$tt)}))==2) + 1])            
+            
+            
+            cm_final_kmeans <- confusionMatrix(as.factor(clusters$cluster), as.factor(c(dataset[[10]]$y, dataset[[10]]$tt)), positive = "2")
+            logger.info(msg = paste("k-means achieves accuracy:", cm_final_kmeans))
+            cm_final_kkalg <- confusionMatrix(as.factor(round(unlist(cv_results)[names(newpca_trans[,1])]) + 1), as.factor(c(dataset[[10]]$y, dataset[[10]]$tt)), positive = "2")
+            logger.info(msg = paste("kk-algorithm achieves accuracy:", cm_final_kkalg))
+            
             
             # # noisy model
             # CV <- cv.glmnet(Xt, y = (yz == 2), alpha = 1)
@@ -293,40 +302,6 @@ my_palette <- colorRampPalette(c("purple3", "white"))(n = 1001)
 my_palette2 <- colorRampPalette(c("white", "green4"))(n = 1001)    # continuous color scale for heatmaps
 discrete_pal <- brewer.pal(6, "Spectral")                          # color palette for discrete variables - line plots for different conditions
 
-# close(matlab)
-
-# # THIS IS A HEATMAP PLOT
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "simulate_mbal", "EXP_RANGE" = NULL, "EXP_RANGE_J" = NULL, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
-# 
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = NULL, "EXP_RANGE" = NULL, "EXP_RANGE_J" = .2, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
-# 
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data1", "EXP_RANGE" = NULL, "EXP_RANGE_J" = .2, "fileroot" = paste(EXPERIMENT_DIR, "file1", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = my_palette2)
-# 
-# # THIS IS A LINE PLOT
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data1", "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file2", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
-# plot_params <- list("DS_SIZE_RANGE" = 20, "DIM_RANGE" = 100, "DATASET" = "generate_data2", "EXP_RANGE" = NULL, "EXP_RANGE_J" =.3, "fileroot" = paste(EXPERIMENT_DIR, "file3", sep=""), "performance_metric" = "AUC")
-# plot_relevant_data_withdataset(list(lr = auc_lr, rlr = auc_rlr, gammalr = auc_gammalr), plot_params, DS_SIZE_RANGE, DIM_RANGE, parameters$datasets$name, EXP_RANGE, EXP_RANGE_J, colorpal = discrete_pal, color_by_pval = TRUE)
-
-
-# 
-# a = lapply(seq(dim(result_array)[3]), function(x) result_array[ , , x, 1, 1])  # get multiple iterations' worth at a contstant error rate (both I and J remain the same), but evaluate all DIM x all DS_SIZEs
-# a = lapply(seq(dim(result_array)[3]), function(x) result_array[ 1, , x, , 1])  # DS_size as a function of error rate in J
-# a = lapply(seq(dim(result_array)[3]), function(x) result_array[ 1, , x, 1 , ])  # DS_size as a function of error rate in I, with 
-# a = lapply(seq(dim(result_array)[3]), function(x) result_array[ , 1, x, 1 , ])  # all DIM x all error rate I, for x iterations, with DS_SIZE = DS_SIZE[1] and ERROR_J = ERROR_J[1]
-# a = lapply(seq(dim(result_array)[3]), function(x) result_array[ , 2, x, 1 , ])  # all DIM as a function of error rate in I, with DS_SIZE = DS_SIZE[2] and ERROR_J = ERROR_J[1]
-# 
-
-
-
-# length(intersect(rownames(head(rfs_flipped$res, n=1000)),rownames(head(rfs_unflipped$res, n=1000))))/1000
-# length(intersect(rownames(head(rfs_unflipped$res, n=1000)),union( rownames(head(rfs_flipped_ttest$res, n=1000)),rownames(head(rfs_flipped_roc$res, n=1000)))))/1000
-# length(union(rownames(head(rfs_flipped_ttest$res, n=1000)),rownames(head(rfs_flipped_roc$res, n=1000))))
-
-# overlap <- plot_feature_similarity(features_selected, c(100, 500, 1000, 2500, 5000, 10000))#, "fileroot" = paste(EXPERIMENT_DIR, "features_byflip", sep=""))
 
 
 
@@ -389,23 +364,3 @@ abline(h = 0, lty = 2)
 
 
 
-
-
-
-
-
-
-
-source("/Users/kkalantar/Documents/Research/NMLHC/nmlhc_matlab2R_functions.R")
-
-geo_data <- readRDS("/Users/kkalantar/Documents/Research/NMLHC/geo_data/ANCESTRY_DATASET.rds")
-pos_regex <- "Listeria"
-neg_regex <- "Non-infected"
-source_variable <- "infection:ch1"
-data <- subset_known_dataset_cv(geo_data, pos_regex, neg_regex, source_variable, .2, .3)
-
-# verify that cross-validation works
-table(unlist(lapply(data, function(x){return(rownames(x$xx))})))  # everything should appear once
-table(unlist(lapply(data, function(x){return(rownames(x$x))})))   # everything should appear 9 times...
-# verify that the labels have been flipped
-cbind(data[[1]]$y, data[[1]]$yz, data[[1]]$ff)

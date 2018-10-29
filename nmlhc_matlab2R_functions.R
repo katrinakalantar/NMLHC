@@ -9,7 +9,7 @@ subset_geo_cv <- function(geo_dataset_name, geo_dataset_list, source_variable, f
   return(return_value)
 }
 
-split_train_test_cv <- function(input, regex, source_variable, flip_i, flip_j, cv=20){
+split_train_test_cv <- function(input, regex, source_variable, flip_i, flip_j, cv=10){
   print("inside split_train_test()")
   s <- shuffle(seq(1:dim(input)[2]))
   cv_datasets <- list()
