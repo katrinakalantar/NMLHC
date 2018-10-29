@@ -1,15 +1,15 @@
 
 
-subset_geo_cv <- function(geo_dataset_name, geo_dataset_list, source_variable){
+subset_geo_cv <- function(geo_dataset_name, geo_dataset_list, source_variable, flip_i, flip_j){
   split <- strsplit(geo_dataset_name, "_")
   print(split)
   pos_regex <- split[[1]][1]
   neg_regex <- split[[1]][2]
-  return_value <- subset_known_dataset_cv(geo_dataset_list[[geo_dataset_name]], pos_regex, neg_regex, source_variable)
+  return_value <- subset_known_dataset_cv(geo_dataset_list[[geo_dataset_name]], pos_regex, neg_regex, source_variable, flip_i, flip_j)
   return(return_value)
 }
 
-split_train_test_cv <- function(input, regex, source_variable, flip_i, flip_j, cv=10){
+split_train_test_cv <- function(input, regex, source_variable, flip_i, flip_j, cv=20){
   print("inside split_train_test()")
   s <- shuffle(seq(1:dim(input)[2]))
   cv_datasets <- list()
@@ -24,21 +24,20 @@ split_train_test_cv <- function(input, regex, source_variable, flip_i, flip_j, c
   a = inject_label_noiseR(true_labels, flip_i, flip_j)
   flipped_labels <- a$yz
   flipped_markers <- a$fd
-  print(flip_i)
-  print(flip_j)
+  print(paste("flip_i = ", flip_i, " / flip_j = ", flip_j))
   print(table(flipped_markers)[2]/(table(flipped_markers)[1]+table(flipped_markers)[2]))
-  #print(table(flipped_markers))
-  
-  print(head(flipped_labels, n=10))
-  print(head(flipped_markers, n=10))
   
   for(i in seq(1:length(test_splits))){
     training_set <- input[,s[!(s %in% test_splits[[i]])]]
     training_flipped_labels <- flipped_labels[s[!(s %in% test_splits[[i]])]]
     training_flipped_markers <- flipped_markers[s[!(s %in% test_splits[[i]])]]
     
+    test_flipped_labels <- flipped_labels[s[(s %in% test_splits[[i]])]]
+    test_flipped_markers <- flipped_markers[s[(s %in% test_splits[[i]])]]
+    
     test_set <- input[,test_splits[[i]]]
-    cv_datasets[[i]] <- list("training_set" = training_set, "test_set" = test_set, "training_flipped_labels" = training_flipped_labels, "training_flipped_markers" = training_flipped_markers)
+    cv_datasets[[i]] <- list("training_set" = training_set, "test_set" = test_set, "training_flipped_labels" = training_flipped_labels, "training_flipped_markers" = training_flipped_markers,
+                             "test_flipped_labels" = test_flipped_labels, "test_flipped_markers" = test_flipped_markers)
   }
   return(cv_datasets)
 }
@@ -61,13 +60,16 @@ subset_known_dataset_cv <- function(geo_data, pos_regex, neg_regex, source_varia
     
     flipped_labels_train <- c((pos_split[[i]]$training_flipped_labels),(neg_split[[i]]$training_flipped_labels))
     flipped_markers_train <- c((pos_split[[i]]$training_flipped_markers),(neg_split[[i]]$training_flipped_markers))
-
+    
+    flipped_labels_test <- c((pos_split[[i]]$test_flipped_labels),(neg_split[[i]]$test_flipped_labels))
+    flipped_markers_test <- c((pos_split[[i]]$test_flipped_markers),(neg_split[[i]]$test_flipped_markers))
+    
     true_labels_test <- rep(0, length(pData(full_test)[,source_variable]))
     true_labels_test[grep(pos_regex, pData(full_test)[,source_variable])] <- 1
     true_labels_test <- true_labels_test + 1
     
     full_dataset[[i]] <- list("x" = t(as.matrix(exprs(full_train))), "y" = as.matrix(true_labels_train), "yz" = as.matrix(flipped_labels_train), "ff" = as.matrix(flipped_markers_train),
-                              "xx" = t(as.matrix(exprs(full_test))), "tt" = as.matrix(true_labels_test), "dd" = as.matrix(rep(0, length(true_labels_test))))
+                              "xx" = t(as.matrix(exprs(full_test))), "tt" = as.matrix(true_labels_test), "tz" = as.matrix(flipped_labels_test), "tf" = as.matrix(flipped_markers_test))
     
   }
   return(full_dataset)
@@ -964,6 +966,7 @@ castLabel <- function(y, t){
   }
   if (-1 %in% y){
     # {-1,1} input
+    print("A")
     if(t == -1){
       y = y # do nothing, included for clarity
     }else if(t == 0){
@@ -973,6 +976,7 @@ castLabel <- function(y, t){
     }
   }else if(0 %in% y){
     # {0,1} input
+    print("B")
     if(t == -1){
       y = y *2 -1
     }else if(t == 0){
@@ -982,12 +986,17 @@ castLabel <- function(y, t){
     }
   }else if (2 %in% y){
     # {1,2} input
+    print("C")
     if (t == -1){
       y = y * 2 - 3
     }else if(t == 0){
       y = y -1
     }else if(t == 2){
       y = y # do nothing, included for clarity
+    }
+  }else if(1 %in% y){
+    if(t == -1){
+      y = y * -1
     }
   }
   return(y)
