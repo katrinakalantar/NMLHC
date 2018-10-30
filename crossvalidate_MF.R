@@ -75,6 +75,8 @@ for(dat in rownames(parameters$datasets)){
   }
 }
 
+#list_of_geo_datasets[[1]] <- list_of_geo_datasets[[1]][,list_of_geo_datasets[[1]]$`infection:ch1` == "Non-infected"]
+
 
 DS_SIZE_RANGE   = parameters$DS_SIZE_RANGE 
 DIM_RANGE       = parameters$DIM_RANGE
@@ -163,22 +165,19 @@ for(dimr in seq(1:length(DIM_RANGE))){
               
               # filter with PC
               print("FIRST FILTRATION:")
-              filter <- make_ensemble_parallel(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
-                                               c("rf","svmLinear3","regLogistic","knn","nnet"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
+              #filter <- make_ensemble_parallel(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+              #                                 c("rf","svmLinear3","regLogistic","knn","nnet"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
+              filter <- make_ensemble(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+                                               c("rf","svmLinear3","regLogistic","knn","rf"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
               
               # in this plot, the larger points are the ones that get kept.
               plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
                    cex = c(1.0, 2.2)[as.integer(filter$MF) + 1], main = "Iter1")
-              #text(pca_res$x[,1] + 2,pca_res$x[,2] + 1, rowSums(filter$full_res))
-              #plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
-              #     cex = c(1.0, 2.2)[as.integer(filter$MF) + 1], main = "Iter 1")
-              
               
               a <- flag_flipped_samples(filter$MF, fdz)
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - %s", toString(a$table)))
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - accuracy = %s", toString(a$overall["Accuracy"])))
               logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - AUC = %s", toString(pROC::roc((fdz==1),rowSums(filter$full_res))$auc)))
-              
               
               idx_keep <- which(filter$MF)
               Xt_confident <- Xt[idx_keep,]
@@ -190,8 +189,10 @@ for(dimr in seq(1:length(DIM_RANGE))){
               print("SECOND FILTRATION:")
               pca_res2 <- prcomp(Xt_confident)
               Xt_pcatrans2 <- pca_res2$x
+              #filter2 <- make_ensemble_parallel(Xt_pcatrans2, y = unlist(lapply(yz_confident, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
+              #                                 c("rf","svmLinear3","regLogistic","knn","nnet"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
               filter2 <- make_ensemble_parallel(Xt_pcatrans2, y = unlist(lapply(yz_confident, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
-                                               c("rf","svmLinear3","regLogistic","knn","nnet"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
+                                                c("rf","svmLinear3","regLogistic","knn","rf"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
               # in this plot, the larger points are the ones that get kept.
               plot(pca_res2$x[,1],pca_res2$x[,2], col = pca_cols2[yt_confident] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz_confident < 0) + 1],
                    cex = c(1.0, 2.2)[as.integer(filter2$MF) + 1], main = "Iter2")
@@ -209,14 +210,6 @@ for(dimr in seq(1:length(DIM_RANGE))){
 
               ####### ####### ####### #######
               
-              
-              
-              # idx_sub <- shuffle(seq(1:dim(Xt)[1]))[1:round(dim(Xt)[1] * .25)] 
-              # Xt_sub <- Xt[idx_sub,]
-              # yt_sub <- yt[idx_sub,]
-              # yz_sub <- yz[idx_sub,]
-              
-              
               # clean model
               CV <- cv.glmnet(Xt_confident, y = (yz_confident == 2), alpha = .2)
               model_clean <- glmnet(Xt_confident, y = (yz_confident == 2), family = "binomial", lambda = CV$lambda.min, alpha = 1)
@@ -229,11 +222,6 @@ for(dimr in seq(1:length(DIM_RANGE))){
               logger.info(msg = paste("CV", cv, "Test AUC: ", roc_test$auc))
               
               cv_results[[cv]] <- res_test[,1]
-              
-              
-              
-              
-              
               
             }
             
@@ -248,10 +236,12 @@ for(dimr in seq(1:length(DIM_RANGE))){
             par(mfrow = c(1,4))
             plot(newpca_trans[,1], newpca_trans[,2], col= c("red","blue")[clusters$cluster], main = "k-means cluster prediction")                       # cluster result scatterplot
             plot(newpca_trans[,1], newpca_trans[,2], col= c("red","blue")[c(dataset[[10]]$y, dataset[[10]]$tt)], main = "truth")   # truth scatterplot
-            plot(newpca_trans[,1], newpca_trans[,2], col= c("red","blue")[c(yz, dataset[[10]]$tz)], main = "mislabelled")                # mislabelled scatterplot
+            plot(newpca_trans[,1], newpca_trans[,2], col= c("red","blue")[c(yz, dataset[[10]]$tz)], main = "mislabelled",
+                 pch = c(16,1)[as.integer(as.factor(c(yz, dataset[[10]]$tz)) == as.factor(c(dataset[[10]]$y, dataset[[10]]$tt))) + 1])                # mislabelled scatterplot
             
             colfunc <- colorRampPalette(c("red", "blue"))
-            plot(newpca_trans[,1], newpca_trans[,2], col=c("red","blue")[round(unlist(cv_results)[names(newpca_trans[,1])]) + 1], main = "KK_alg prediction")       # algorithm-predicted scatterplot
+            plot(newpca_trans[,1], newpca_trans[,2], col=c("red","blue")[round(unlist(cv_results)[names(newpca_trans[,1])]) + 1],
+                 main = "KK_alg prediction", pch = c(16,1)[as.integer(as.factor(round(unlist(cv_results)[names(newpca_trans[,1])]) + 1) == as.factor(c(dataset[[10]]$y, dataset[[10]]$tt))) + 1])       # algorithm-predicted scatterplot
             barplot(unlist(cv_results), col = c("red","blue")[(unlist(lapply(dataset, function(x){return(x$tt)}))==2) + 1])             # barplot
             barplot(unlist(clusters$cluster)[names(unlist(cv_results))], col = c("red","blue")[(unlist(lapply(dataset, function(x){return(x$tt)}))==2) + 1])            
             
@@ -261,24 +251,146 @@ for(dimr in seq(1:length(DIM_RANGE))){
             cm_final_kkalg <- confusionMatrix(as.factor(round(unlist(cv_results)[names(newpca_trans[,1])]) + 1), as.factor(c(dataset[[10]]$y, dataset[[10]]$tt)), positive = "2")
             logger.info(msg = paste("kk-algorithm achieves accuracy:", cm_final_kkalg))
             
+            cm_final_mislabelling <- confusionMatrix(as.factor(c(yz, dataset[[10]]$tz)), as.factor(c(dataset[[10]]$y, dataset[[10]]$tt)), positive = "2")
+            logger.info(msg = paste("final_mislabelling achieves accuracy:", cm_final_mislabelling))
             
-            # # noisy model
-            # CV <- cv.glmnet(Xt, y = (yz == 2), alpha = 1)
-            # model_full <- glmnet(Xt, y = (yz == 2), family = "binomial", lambda = CV$lambda.min, alpha = 1)
-            # res_train <- predict(model_full, Xt, type = "response")
-            # roc_train <- pROC::roc(yz, res_train[,1])
-            # res_test <- predict(model_full, Xs, type = "response")
-            # roc_test <- pROC::roc((ys==2), res_test[,1])
-            # auc_lr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
-            # 
-            # # subset unflipped model
-            # CV <- cv.glmnet(Xt_sub, y = (yt_sub == 2), alpha = 1)
-            # model_sub <- glmnet(Xt_sub, y = (yt_sub == 2), family = "binomial", lambda = CV$lambda.min, alpha = 1)
-            # res_train <- predict(model_sub, Xt_sub, type = "response")
-            # roc_train <- pROC::roc(yt_sub, res_train[,1])
-            # res_test <- predict(model_sub, Xs, type = "response")s
-            # roc_test <- pROC::roc((ys==2), res_test[,1])
-            # auc_gammalr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
+            
+            
+            
+            
+            cv_results2 <- list()
+            
+            for(cv in seq(1:length(dataset))){
+              # MOVE ALL THE ACTION INTO HERE!!!
+              
+              logger.info(msg="IN SECOND ROUND OF CLASSIFICATION")
+              
+              Xt = dataset[[cv]]$x
+              Xt = Xt[,colSums(Xt) != 0]  # select only the genes with > 0 reads
+              yt = dataset[[cv]]$y
+              
+              Xs = dataset[[cv]]$xx
+              Xs = Xs[,colSums(Xs) != 0]  # select only the genes with > 0 reads
+              yt = dataset[[cv]]$tt
+              
+              print(dim(Xt))
+              print(dim(Xs))
+              
+              # a priori feature selection - http://pklab.med.harvard.edu/scw2014/subpop_tutorial.html
+              #features_to_keep <- apriori_feature_selection(Xt)
+              #feature_names <- intersect(intersect(colnames(Xt), colnames(Xs)), features_to_keep)
+              
+              # use only features with > 0 reads in training set and test set
+              feature_names <- intersect(colnames(Xt), colnames(Xs))
+              Xs = Xs[,feature_names]      # select only the genes that were present in the training set 
+              Xt = Xt[,feature_names]
+              
+              Xt = scale(Xt)  # CHECK ON THIS
+              Xs = scale(Xs)  # CHECK ON THIS
+              
+              yz = as.integer(unlist(cv_results)[rownames(Xt)]>.5)+1
+              #fdz = dataset[[cv]]$ff
+              
+              pca_res <- prcomp(Xt)
+              Xt_pcatrans <- pca_res$x
+              
+              # filter with PC
+              print("FIRST FILTRATION:")
+              #filter <- make_ensemble_parallel(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+              #                                 c("rf","svmLinear3","regLogistic","knn","nnet"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
+              filter <- make_ensemble(Xt_pcatrans, y = unlist(lapply(yz, function(x){if(x==1){return("one")}else if(x==2){return("two")}})), 
+                                      c("rf","svmLinear3","regLogistic","knn","rf"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
+              
+              # in this plot, the larger points are the ones that get kept.
+              #plot(pca_res$x[,1],pca_res$x[,2], col = pca_cols[yt] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz < 0) + 1],
+              #     cex = c(1.0, 2.2)[as.integer(filter$MF) + 1], main = "Iter1")
+              
+              #a <- flag_flipped_samples(filter$MF, fdz)
+              #logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - %s", toString(a$table)))
+              #logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - accuracy = %s", toString(a$overall["Accuracy"])))
+              #logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF - AUC = %s", toString(pROC::roc((fdz==1),rowSums(filter$full_res))$auc)))
+              
+              idx_keep <- which(filter$MF)
+              Xt_confident <- Xt[idx_keep,]
+              yz_confident <- yz[idx_keep]
+              yt_confident <- yt[idx_keep]
+              #fdz_confident <- fdz[idx_keep]
+              
+              ####### LOOPING AGAIN!!! #######
+              print("SECOND FILTRATION:")
+              pca_res2 <- prcomp(Xt_confident)
+              Xt_pcatrans2 <- pca_res2$x
+              #filter2 <- make_ensemble_parallel(Xt_pcatrans2, y = unlist(lapply(yz_confident, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
+              #                                 c("rf","svmLinear3","regLogistic","knn","nnet"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
+              filter2 <- make_ensemble_parallel(Xt_pcatrans2, y = unlist(lapply(yz_confident, function(x){if(x==1){return("one")}else if(x==2){return("two")}})),
+                                                c("rf","svmLinear3","regLogistic","knn","rf"),multiple = FALSE)  #,"nnet","nnet",, "mlp","rFerns" "RFlda",hdda  , ,"nnet" "knn",,"nnet", ,"nnet","regLogistic"
+              # in this plot, the larger points are the ones that get kept.
+              #plot(pca_res2$x[,1],pca_res2$x[,2], col = pca_cols2[yt_confident] ,lwd = 2, xlab = "PC1",ylab = "PC2", pch = c(16, 1)[as.integer(fdz_confident < 0) + 1],
+              #     cex = c(1.0, 2.2)[as.integer(filter2$MF) + 1], main = "Iter2")
+              #text(pca_res2$x[,1] + 2,pca_res2$x[,2] + 1, rowSums(filter2$full_res))
+              #a2 <- flag_flipped_samples(filter2$MF, fdz_confident)
+              #logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF2 - %s", toString(a2$table)))
+              #logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF2 - accuracy = %s", toString(a2$overall["Accuracy"])))
+              #logger.info(msg = sprintf("MAIN - ALGO - ENSEMBLE - MF2 - AUC = %s", toString(pROC::roc((fdz_confident==1),rowSums(filter2$full_res))$auc)))
+              
+              idx_keep <- which(filter2$MF)
+              Xt_confident <- Xt_confident[idx_keep,]
+              yz_confident <- yz_confident[idx_keep]
+              yt_confident <- yt_confident[idx_keep]
+              #fdz_confident <- fdz_confident[idx_keep]
+              
+              ####### ####### ####### #######
+              
+              # clean model
+              CV <- cv.glmnet(Xt_confident, y = (yz_confident == 2), alpha = .2)
+              model_clean <- glmnet(Xt_confident, y = (yz_confident == 2), family = "binomial", lambda = CV$lambda.min, alpha = 1)
+              res_train <- predict(model_clean, Xt_confident, type = "response")
+              roc_train <- pROC::roc((yz_confident == 2), res_train[,1])
+              logger.info(msg = paste("CV", cv, "Train AUC: ", roc_train$auc))
+              res_test <- predict(model_clean, Xs, type = "response")
+              roc_test <- pROC::roc((ys==2), res_test[,1])
+              auc_rlr[dimr, dsize, d, k, j, i] = roc_test$auc  # save result
+              logger.info(msg = paste("CV", cv, "Test AUC: ", roc_test$auc))
+              
+              cv_results2[[cv]] <- res_test[,1]
+              
+            }
+            
+            final_ROC2 <- pROC::roc(unlist(lapply(dataset, function(x){return(x$tt)}))==2, unlist(cv_results2))
+            logger.info(msg = paste("Final ROC:", final_ROC2$auc))
+            
+            newdat <- rbind(Xt,Xs)
+            newpca <- prcomp(newdat)
+            newpca_trans <- newpca$x
+            #set.seed(20)
+            clusters <- kmeans(newpca_trans, 2)
+            par(mfrow = c(1,4))
+            plot(newpca_trans[,1], newpca_trans[,2], col= c("red","blue")[clusters$cluster], main = "k-means cluster prediction")                       # cluster result scatterplot
+            plot(newpca_trans[,1], newpca_trans[,2], col= c("red","blue")[c(dataset[[10]]$y, dataset[[10]]$tt)], main = "truth")   # truth scatterplot
+            plot(newpca_trans[,1], newpca_trans[,2], col= c("red","blue")[c(yz, dataset[[10]]$tz)], main = "mislabelled",
+                 pch = c(16,1)[as.integer(as.factor(c(yz, dataset[[10]]$tz)) == as.factor(c(dataset[[10]]$y, dataset[[10]]$tt))) + 1])                # mislabelled scatterplot
+            
+            colfunc <- colorRampPalette(c("red", "blue"))
+            plot(newpca_trans[,1], newpca_trans[,2], col=c("red","blue")[round(unlist(cv_results2)[names(newpca_trans[,1])]) + 1],
+                 main = "KK_alg prediction", pch = c(16,1)[as.integer(as.factor(round(unlist(cv_results2)[names(newpca_trans[,1])]) + 1) == as.factor(c(dataset[[10]]$y, dataset[[10]]$tt))) + 1])       # algorithm-predicted scatterplot
+            barplot(unlist(cv_results2), col = c("red","blue")[(unlist(lapply(dataset, function(x){return(x$tt)}))==2) + 1])             # barplot
+            barplot(unlist(clusters$cluster)[names(unlist(cv_results2))], col = c("red","blue")[(unlist(lapply(dataset, function(x){return(x$tt)}))==2) + 1])            
+            
+            
+            cm_final_kmeans2 <- confusionMatrix(as.factor(clusters$cluster), as.factor(c(dataset[[10]]$y, dataset[[10]]$tt)), positive = "2")
+            logger.info(msg = paste("k-means2 achieves accuracy:", cm_final_kmeans2))
+            cm_final_kkalg2 <- confusionMatrix(as.factor(round(unlist(cv_results2)[names(newpca_trans[,1])]) + 1), as.factor(c(dataset[[10]]$y, dataset[[10]]$tt)), positive = "2")
+            logger.info(msg = paste("kk-algorithm2 achieves accuracy:", cm_final_kkalg2))
+            
+            cm_final_mislabelling2 <- confusionMatrix(as.factor(c(yz, dataset[[10]]$tz)), as.factor(c(dataset[[10]]$y, dataset[[10]]$tt)), positive = "2")
+            
+            
+            
+            
+            
+            
+            
+            
             
           }
         }
