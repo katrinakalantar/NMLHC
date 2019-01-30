@@ -7,7 +7,7 @@ library(Rfast)
 library(scales)
 library(SimSeq)
 library(glmnet)
-
+library(permute)
 
 split_train_test <- function(input){
   s <- shuffle(seq(1:dim(input)[2]))
@@ -157,7 +157,7 @@ plot_res_heatmaps <- function(results){
 }
 
 
-generate_simulated_data <- function(negative_reference_data, positive_reference_data, n = 1, DEgenes){
+generate_simulated_data <- function(negative_reference_data, positive_reference_data, n = 5, DEgenes){
   new_negatives <- c()
   new_positives <- c()
   
@@ -199,11 +199,16 @@ generate_simulated_dataset <- function(input_data, training_names, DEgenes){
   training_set <- input_data[,training_names]
   test_set <- input_data[,!(colnames(input_data) %in% training_names)]
   
-  training_dataset <- generate_simulated_data(training_set[,training_set$effective_group == 4],  training_set[,training_set$effective_group == 1], 2, DEgenes)
-  test_dataset <- generate_simulated_data(test_set[,test_set$effective_group == 4], test_set[,test_set$effective_group == 1], 3, DEgenes)
+  training_dataset <- generate_simulated_data(training_set[,training_set$effective_group == 4],  training_set[,training_set$effective_group == 1], 25, DEgenes)
+  test_dataset <- generate_simulated_data(test_set[,test_set$effective_group == 4], test_set[,test_set$effective_group == 1], 30, DEgenes)
   
   training_dataset_normalized <- make_sim_eset(t(t(training_dataset)/colSums(training_dataset)))
   test_dataset_normalized <- make_sim_eset(t(t(test_dataset)/colSums(test_dataset)))
   
+  #training_dataset_normalized <- make_sim_eset(training_dataset)
+  #test_dataset_normalized <- make_sim_eset(test_dataset)
+  
   return(list("train_data" = training_dataset_normalized, "test_data" = test_dataset_normalized, "train_labels" = training_dataset_normalized$classification, "test_labels" = test_dataset_normalized$classification))
 }
+
+

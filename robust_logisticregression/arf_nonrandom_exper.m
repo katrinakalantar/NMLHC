@@ -29,7 +29,7 @@ CLS             = 2;
 DIM             = 10;
 
 
-for nt = {'gam12','gam22','gam32','gam51','random'}
+for nt = {'random'} %'gam12','gam22','gam32','gam51',
     
     noiseType = cell2mat(nt);
     

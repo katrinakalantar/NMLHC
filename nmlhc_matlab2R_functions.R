@@ -1,5 +1,14 @@
 
-
+#' Generate predictions based on an ensemble of classification algorithms; 
+#' 
+#' @param geo_dataset_name The dataset name set initially.
+#' @param geo_dataset_list The pre-loaded list of GEO datasets.
+#' @param source_variable The GEO dataset variable that will be used to split the dataset.
+#' @param flip_i Decimal value indicating the proportion of samples of class B to flip to class A.
+#' @param flip_j Decimal value indicating the proportion of samples of class B to flip to class A.
+#' @return 
+#' @examples
+#' subset_geo_cv(geo_dataset_name, geo_dataset_list, source_variable, flip_i, flip_j)
 subset_geo_cv <- function(geo_dataset_name, geo_dataset_list, source_variable, flip_i, flip_j){
   split <- strsplit(geo_dataset_name, "_")
   print(split)

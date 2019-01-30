@@ -11,3 +11,4 @@ robust_logisticregression/results*
 robust_logisticregression/*.pdf
 *.xlsx
 Manuscript
+geo_data/*.tsv
